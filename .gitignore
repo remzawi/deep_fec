@@ -127,3 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+#numpy files
+.npy
+
+#keras models
+.tf
+.h5
+.hdf5
