@@ -105,6 +105,7 @@ def MAP_BSC(x):
     return unpackbits(np.argmin(dist),8)
 
 def MAP_BAC(x,p,q):
+    db=loadDB(BPSK=False)
     dist=np.log(1-p)*np.count_nonzero(1-db,axis=1)+np.log(1-q)*np.count_nonzero(db,axis=1)
-    dist+=np.power(np.log(p/(1-p)),np.sum((db<0.5)*x,axis=1))
-    dist+=np.power(np.log(q/(1-q)),np.sum((db>0.5)*x,axis=1))
+    dist+=np.log(p/(1-p))*np.sum((db<0.5)*x,axis=1)+np.log(q/(1-q))*np.sum((db>0.5)*x,axis=1)
+    return unpackbits(np.argmin(dist),8)
