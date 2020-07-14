@@ -129,9 +129,9 @@ dmypy.json
 .pyre/
 
 #numpy files
-.npy
+*.npy
 
 #keras models
-.tf
-.h5
-.hdf5
+*.tf
+*.h5
+*.hdf5
