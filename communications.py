@@ -25,7 +25,7 @@ def createBitVectors():
     return np.unpackbits(x,axis=1)
 
 def createPolarCodewords():
-    return np.mod(np.dot(createBitVectors(),G),2)
+    return np.mod(np.dot(createBitVectors(),G),2).astype('float32')
 
 def BPSK(x):
     return 2 * x - 1
@@ -68,7 +68,7 @@ def BER(y_result,y_true,one_hot=False,to_int=False):
 def createTrainingDatasetDecoder(BPSK=True,noise=None,one_hot=False):
     X_train=createPolarCodewords()
     if BPSK:
-        X_train=BPSK(X_train)
+        X_train=2*X_train-1
     if noise is not None:
         X_train=noise(X_train)
     if one_hot:
@@ -76,9 +76,9 @@ def createTrainingDatasetDecoder(BPSK=True,noise=None,one_hot=False):
     else:
         return X_train,createBitVectors()
 
-def AWGN(X_train,snr=2):
+def AWGN(X_train,snr=1):
     sigma =np.sqrt(0.5)*10**(-snr/20)
-    X_train+=np.random.normal(0,sigma,X_train.shape)
+    X_train=X_train+np.random.normal(0,sigma,X_train.shape)
     return X_train
 
 def BSC(X_train,p=0.2):

@@ -1,0 +1,2 @@
+model_checkpoint_path: "AWGNOHDecoder2.tf"
+all_model_checkpoint_paths: "AWGNOHDecoder2.tf"
