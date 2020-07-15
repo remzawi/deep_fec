@@ -1,6 +1,8 @@
 import tensorflow as tf 
 import numpy as np
 from tensorflow.keras.layers import ReLU,BatchNormalization,LayerNormalization,Dense
+import matplotlib.pyplot as plt 
+
 
 def ber_metric(y_true,y_pred):
     y_pred=y_pred>0.5
@@ -55,6 +57,19 @@ def create_model(hidden_size,snr):
     model.compile(optimizer='adam',
               loss='categorical_crossentropy',metrics=[ber_metric_oh,'acc'])
     return model
+
+def plot_history(history,to_plot=None,save=True,base_name=""): #if to_plot is None, plot everything, else only plot values in to_plot
+    if to_plot is None:
+        to_plot=history.history.keys()
+    for metric in to_plot:
+        plt.figure()
+        plt.title(metric + " vs epoch")
+        plt.xlabel('Epoch')
+        plt.ylabel(metric)
+        plt.plot(np.arange(len(history.history[metric]))+1,history.history[metric])
+        if save:
+            plt.savefig(base_name+metric+'.eps')
+    plt.show()
 
         
 

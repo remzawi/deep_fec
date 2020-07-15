@@ -1,5 +1,6 @@
 import numpy as np
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 #Default encoding matrix
 G = np.array([[1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -85,7 +86,7 @@ def BSC(X_train,p=0.2):
     mask=np.random.rand(X_train.shape[0],X_train.shape[1])<=p
     return np.mod(X_train+mask,2)
 
-def BAC(X_train,p=0.2,q=0.1):
+def BAC(X_train,p=0.2,q=0.07):
     mask1=np.random.rand(X_train.shape[0],X_train.shape[1])<=p
     mask2=np.random.rand(X_train.shape[0],X_train.shape[1])<=q
     mask1=mask1*(1-X_train)
@@ -111,3 +112,29 @@ def MAP_BAC(x,p,q):
     return unpackbits(np.argmin(dist),8)
 
 
+def computePOLARBER(f,noise,param_values,one_hot=True,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**5]):
+    if len(points_per_value)==1:
+        points_per_value=points_per_value*len(param_values)
+    ber_list=[]
+    for i in range(len(param_values)):
+        ind=np.random.randint(256,size=points_per_value[i])
+        y_ber=createBitVectors()[ind]
+        X_ber=np.mod(np.dot(y_ber,G),2).astype('float32')
+        X_ber=noise(X_ber,param_values[i])
+        y_pred=f(X_ber)
+        ber_list.append(BER(y_pred,y_ber,one_hot,True))
+    if save_params:
+        if params_name is None:
+            params_name='params.npy'
+        np.save(params_name,param_values)
+    if save_ber:
+        if ber_name is None:
+            ber_name='ber.npy'
+        np.save(ber_name,ber_list)
+    if plot_ber:
+        plt.figure()
+        plt.ylabel('BER')
+        plt.xlabel('Parameter')
+        plt.plot(param_values,ber_list)
+        plt.show()
+    
