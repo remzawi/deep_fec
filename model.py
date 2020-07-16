@@ -1,6 +1,6 @@
 import tensorflow as tf 
 import numpy as np
-from tensorflow.keras.layers import ReLU,BatchNormalization,LayerNormalization,Dense
+from tensorflow.keras.layers import ReLU,BatchNormalization,LayerNormalization,Dense,Input
 import matplotlib.pyplot as plt 
 
 
@@ -27,12 +27,57 @@ class AWGN(tf.keras.layers.Layer):
     def __init__(self,snr,**kwargs):
         super(AWGN,self).__init__(**kwargs)
         self.sigma=np.sqrt(0.5)*10**(-snr/20)
-    def __call__(self,input,training=None):
+    def call(self,input,training=None):
         if training:
             return input+tf.random.normal(input.shape,stddev=self.sigma)
         return input
-        
+    def get_config(self):
+        config = super(AWGN, self).get_config()
+        return config
+    
+class BSC(tf.keras.layers.Layer):
+    def __init__(self,p,**kwargs):
+        super(BSC,self).__init__(**kwargs)
+        self.p=p
+    def call(self,input,training=None):
+        if training:
+            mask=tf.dtypes.cast(tf.random.uniform(input.shape)<self.p,tf.uint8)
+            return tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.dtypes.cast(input,tf.uint8),mask),tf.float32)
+        return input
+    def get_config(self):
+        config = super(BSC, self).get_config()
+        return config
 
+class BAC(tf.keras.layers.Layer):
+    def __init__(self,p,**kwargs):
+        super(BAC,self).__init__(**kwargs)
+        self.p=p
+    def call(self,input,training=None):
+        if training:
+            temp=tf.dtypes.cast(input,tf.uint8)
+            mask1=tf.dtypes.cast(tf.random.uniform(input.shape)<0.07,tf.uint8)
+            mask2=tf.dtypes.cast(tf.random.uniform(input.shape)<self.p,tf.uint8)
+            mask1=tf.dtypes.cast(mask1*temp,tf.uint8)
+            mask2=tf.dtypes.cast(mask2*(1-temp),tf.uint8)
+            mask=tf.bitwise.bitwise_xor(mask1,mask2)
+            return tf.dtypes.cast(tf.bitwise.bitwise_xor(temp,mask),tf.float32)
+        return input
+    def get_config(self):
+        config = super(BAC, self).get_config()
+        return config
+        
+def OHDecoder(hidden_size,noise_layer,noise_param):
+    model=tf.keras.Sequential()
+    #model.add(Input(shape=(16,)))
+    model.add(noise_layer(noise_param))
+    #model.add(LayerNormalization())
+    model.add(Dense(hidden_size,activation='relu'))
+    model.add(LayerNormalization())
+    model.add(Dense(256,activation='softmax'))
+    model.compile(optimizer='adam',
+              loss='categorical_crossentropy',metrics=[ber_metric_oh,'acc'])
+    return model
+'''
 class OHDecoder(tf.keras.Model):
     def __init__(self,hidden_size,snr):
         super(OHDecoder,self).__init__()
@@ -51,7 +96,7 @@ class OHDecoder(tf.keras.Model):
         x=self.ln2(x,training=training)
         x=self.out(x)
         return x
-
+'''
 def create_model(hidden_size,snr):
     model=OHDecoder(hidden_size,snr)
     model.compile(optimizer='adam',
