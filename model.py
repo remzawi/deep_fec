@@ -68,35 +68,14 @@ class BAC(tf.keras.layers.Layer):
         
 def OHDecoder(hidden_size,noise_layer,noise_param):
     model=tf.keras.Sequential()
-    #model.add(Input(shape=(16,)))
     model.add(noise_layer(noise_param))
-    #model.add(LayerNormalization())
     model.add(Dense(hidden_size,activation='relu'))
     model.add(LayerNormalization())
     model.add(Dense(256,activation='softmax'))
     model.compile(optimizer='adam',
               loss='categorical_crossentropy',metrics=[ber_metric_oh,'acc'])
     return model
-'''
-class OHDecoder(tf.keras.Model):
-    def __init__(self,hidden_size,snr):
-        super(OHDecoder,self).__init__()
-        self.noise=AWGN(snr)
-        self.hidden=Dense(hidden_size)
-        self.relu=ReLU()
-        self.ln1=LayerNormalization()
-        self.ln2=LayerNormalization()
-        self.out=Dense(256,activation='softmax')
-    
-    def call(self, input_tensor, training=False):
-        x=self.noise(input_tensor,training)
-        x=self.ln1(x,training=training)
-        x=self.hidden(x)
-        x=self.relu(x)
-        x=self.ln2(x,training=training)
-        x=self.out(x)
-        return x
-'''
+
 def create_model(hidden_size,snr):
     model=OHDecoder(hidden_size,snr)
     model.compile(optimizer='adam',
@@ -115,7 +94,3 @@ def plot_history(history,to_plot=None,save=True,base_name=""): #if to_plot is No
         if save:
             plt.savefig(base_name+metric+'.eps')
     plt.show()
-
-        
-
-
