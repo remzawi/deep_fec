@@ -39,7 +39,7 @@ def oh2bin(x):
 def createCdwsDB():
     np.save('polarDB.npy',BPSK(createPolarCodewords()))
 
-def loadDB(BPSK=True):
+def loadDB(with_BPSK=True):
     if BPSK:
         try:
             return BPSK(np.load('polarDB.npy'))
@@ -77,8 +77,10 @@ def createTrainingDatasetDecoder(BPSK=True,noise=None,one_hot=False):
     else:
         return X_train,createBitVectors()
 
-def AWGN(X_train,snr=1):
+def AWGN(X_train,snr=1,with_BPSK=True):
     sigma =np.sqrt(0.5)*10**(-snr/20)
+    if with_BPSK:
+        X_train=BPSK(X_train)
     X_train=X_train+np.random.normal(0,sigma,X_train.shape)
     return X_train
 
@@ -98,21 +100,32 @@ def BAC(X_train,p=0.2,q=0.07):
 def MAP_AWGN(x):
     db=loadDB()
     dist=np.sum((db-x)**2,axis=1)
-    return unpackbits(np.argmin(dist),8)
+    return np.flip(unpackbits(np.argmin(dist),8))
+
+def apply_MAP_AWGN(x):
+    return np.array([MAP_AWGN(x[i]) for i in range(len(x))])
 
 def MAP_BSC(x):
-    db=loadDB(BPSK=False)
+    db=loadDB(with_BPSK=False)
     dist=np.count_nonzero(db-x,axis=1)
     return unpackbits(np.argmin(dist),8)
 
 def MAP_BAC(x,p,q):
-    db=loadDB(BPSK=False)
+    db=loadDB(with_BPSK=False)
     dist=np.log(1-p)*np.count_nonzero(1-db,axis=1)+np.log(1-q)*np.count_nonzero(db,axis=1)
     dist+=np.log(p/(1-p))*np.sum((db<0.5)*x,axis=1)+np.log(q/(1-q))*np.sum((db>0.5)*x,axis=1)
     return unpackbits(np.argmin(dist),8)
 
 
-def computePOLARBER(f,noise,param_values,one_hot=True,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**5]):
+def computePOLARBER(f,noise_type,param_values,one_hot=True,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**6]):
+    if noise_type == 'AWGN':
+        noise=AWGN
+    elif noise_type == 'BAC':
+        noise=BAC
+    elif noise_type == 'BSC':
+        noise=BSC
+    else:
+        raise ValueError('noise_type not one of (AWGN, BSC, BAC)')
     if len(points_per_value)==1:
         points_per_value=points_per_value*len(param_values)
     ber_list=[]
