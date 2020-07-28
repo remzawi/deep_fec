@@ -37,10 +37,10 @@ def oh2bin(x):
     return unpackbits(np.argmax(x,axis=1),8)
 
 def createCdwsDB():
-    np.save('polarDB.npy',BPSK(createPolarCodewords()))
+    np.save('polarDB.npy',createPolarCodewords())
 
 def loadDB(with_BPSK=True):
-    if BPSK:
+    if with_BPSK:
         try:
             return BPSK(np.load('polarDB.npy'))
         except:
@@ -100,9 +100,11 @@ def BAC(X_train,p=0.2,q=0.07):
 def MAP_AWGN(x):
     db=loadDB()
     dist=np.sum((db-x)**2,axis=1)
-    return np.flip(unpackbits(np.argmin(dist),8))
+    return unpackbits(np.argmin(dist),8)
 
-def apply_MAP_AWGN(x):
+def apply_MAP_AWGN(x,flip=False):
+    if flip:
+        return np.flip(np.array([MAP_AWGN(x[i]) for i in range(len(x))]),axis=1)
     return np.array([MAP_AWGN(x[i]) for i in range(len(x))])
 
 def MAP_BSC(x):
@@ -151,3 +153,13 @@ def computePOLARBER(f,noise_type,param_values,one_hot=True,save_params=True,para
         plt.plot(param_values,ber_list)
         plt.show()
     
+def test_MAP():
+    ind=np.random.randint(256,size=10**4)
+    y_ber=unpackbits(ind,8)
+    X_ber=np.mod(np.dot(y_ber,G),2).astype('float32')
+    X_ber=AWGN(X_ber,8)
+    y_pred=apply_MAP_AWGN(X_ber)
+    print(BER(np.flip(y_pred,axis=1),y_ber,one_hot=False,to_int=True))
+
+test_MAP()
+
