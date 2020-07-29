@@ -66,21 +66,50 @@ class BAC(tf.keras.layers.Layer):
         config = super(BAC, self).get_config()
         return config
         
-def OHDecoder(hidden_size,noise_layer,noise_param):
+def OHDecoder_SEQ(hidden_size,noise_layer,noise_param):
     model=tf.keras.Sequential()
     model.add(noise_layer(noise_param))
     model.add(Dense(hidden_size,activation='relu'))
     model.add(LayerNormalization())
     model.add(Dense(256,activation='softmax'))
     model.compile(optimizer='adam',
-              loss='categorical_crossentropy',metrics=[ber_metric_oh,'acc'])
+              loss='categorical_crossentropy',
+              metrics=[ber_metric_oh,'acc'])
     return model
 
-def create_model(hidden_size,snr):
-    model=OHDecoder(hidden_size,snr)
-    model.compile(optimizer='adam',
-              loss='categorical_crossentropy',metrics=[ber_metric_oh,'acc'])
+def OHEncoder(hidden_size,use_BN,use_LN):
+    inputs=tf.keras.Input(shape=(256,))
+    enc=Dense(hidden_size,activation='relu')(inputs)
+    if use_BN:
+        enc=BatchNormalization()(enc)
+    elif use_LN:
+        enc=LayerNormalization()(enc)
+    enc_output=Dense(16,activation='tanh')(enc)
+    model=tf.keras.Model(inputs,enc_output)
     return model
+
+def OHDecoder(hidden_size,noise_layer,noise_param,use_BN,use_LN):
+    inputs=tf.keras.Input(shape=(16,))
+    noise=noise_layer(noise_param)(inputs)
+    dec=Dense(hidden_size,activation='relu')(noise)
+    if use_BN:
+        dec=BatchNormalization()(dec)
+    elif use_LN:
+        dec=LayerNormalization()(dec)
+    dec_output=Dense(256,activation='softmax')(dec)
+    model=tf.keras.Model(inputs,dec_output)
+    return model
+
+def OHAutoencoder(hidden_size1,hidden_size2,noise_layer,noise_param,use_BN=True,use_LN=False):
+    inputs=tf.keras.Input(shape=(256,))
+    encoder=OHEncoder(hidden_size1,use_BN,use_LN)
+    decoder=OHDecoder(hidden_size2,noise_layer,noise_param,use_BN,use_LN)
+    autoencoder=tf.keras.Model(inputs,decoder(encoder(inputs)))
+    autoencoder.compile(optimizer='adam',
+              loss='categorical_crossentropy',
+              metrics=[ber_metric_oh,'acc'])
+    return autoencoder,encoder,decoder
+
 
 def plot_history(history,to_plot=None,save=True,base_name=""): #if to_plot is None, plot everything, else only plot values in to_plot
     if to_plot is None:
