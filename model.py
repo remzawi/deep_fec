@@ -20,7 +20,7 @@ def ber_metric_oh(y_true,y_pred):
     for i in range(y_true.shape[0]):      
         unpacked_true = tf.dtypes.cast(tf.reshape(tf.bitwise.bitwise_and(tf.dtypes.cast(tf.math.argmax(y_true[i]),tf.uint8), b), [-1]),tf.float32)
         unpacked_pred = tf.dtypes.cast(tf.reshape(tf.bitwise.bitwise_and(tf.dtypes.cast(tf.math.argmax(y_pred[i]),tf.uint8), b), [-1]),tf.float32)
-        count_diff+=tf.math.count_nonzero((unpacked_pred-unpacked_true)>0.1)
+        count_diff+=tf.math.count_nonzero(tf.math.abs(unpacked_pred-unpacked_true)>0.1)
     return tf.dtypes.cast(count_diff,tf.float32)/tf.dtypes.cast(tf.math.reduce_prod(y_pred.shape),tf.float32)
 
 class AWGN(tf.keras.layers.Layer):
