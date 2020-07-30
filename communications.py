@@ -150,6 +150,7 @@ def computePOLARBER(f,noise_type,param_values,one_hot=True,save_params=True,para
         plt.figure()
         plt.ylabel('BER')
         plt.xlabel('Parameter')
+        plt.yscale('log')
         plt.plot(param_values,ber_list)
         plt.show()
     
@@ -160,6 +161,43 @@ def test_MAP():
     X_ber=AWGN(X_ber,8)
     y_pred=apply_MAP_AWGN(X_ber)
     print(BER(np.flip(y_pred,axis=1),y_ber,one_hot=False,to_int=True))
+    
+def OHAutoencoderBER(encoder,decoder,noise_type,param_values,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**6]):
+    if noise_type == 'AWGN':
+        noise=AWGN
+    elif noise_type == 'BAC':
+        noise=BAC
+    elif noise_type == 'BSC':
+        noise=BSC
+    else:
+        raise ValueError('noise_type not one of (AWGN, BSC, BAC)')
+    if len(points_per_value)==1:
+        points_per_value=points_per_value*len(param_values)
+    ber_list=[]
+    for i in range(len(param_values)):
+        ind=np.random.randint(256,size=points_per_value[i])
+        y_ber=np.zeros((points_per_value[i],256))
+        y_ber[np.arange(points_per_value[i]),ind]=1
+        X_ber=encoder.predict(y_ber)
+        X_ber=noise(X_ber,param_values[i])
+        y_pred=decoder.predict(X_ber)
+        y_ber=oh2bin(y_ber)
+        ber_list.append(BER(y_pred,y_ber,True,True))
+    if save_params:
+        if params_name is None:
+            params_name='params.npy'
+        np.save(params_name,param_values)
+    if save_ber:
+        if ber_name is None:
+            ber_name='ber.npy'
+        np.save(ber_name,ber_list)
+    if plot_ber:
+        plt.figure()
+        plt.ylabel('BER')
+        plt.xlabel('Parameter')
+        plt.yscale('log')
+        plt.plot(param_values,ber_list)
+        plt.show()
 
-test_MAP()
+#test_MAP()
 

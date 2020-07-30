@@ -26,13 +26,15 @@ def ber_metric_oh(y_true,y_pred):
 class AWGN(tf.keras.layers.Layer):
     def __init__(self,snr,**kwargs):
         super(AWGN,self).__init__(**kwargs)
+        self.snr=snr
         self.sigma=np.sqrt(0.5)*10**(-snr/20)
     def call(self,input,training=None):
         if training:
-            return input+tf.random.normal(input.shape,stddev=self.sigma)
-        return input
+            return tf.identity(input)+tf.random.normal(tf.shape(input),stddev=self.sigma)
+        return tf.identity(input)
     def get_config(self):
         config = super(AWGN, self).get_config()
+        config['snr']=self.snr
         return config
     
 class BSC(tf.keras.layers.Layer):
@@ -41,11 +43,12 @@ class BSC(tf.keras.layers.Layer):
         self.p=p
     def call(self,input,training=None):
         if training:
-            mask=tf.dtypes.cast(tf.random.uniform(input.shape)<self.p,tf.uint8)
+            mask=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.uint8)
             return tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.dtypes.cast(input,tf.uint8),mask),tf.float32)
-        return input
+        return tf.identity(input)
     def get_config(self):
         config = super(BSC, self).get_config()
+        config['p']=self.p
         return config
 
 class BAC(tf.keras.layers.Layer):
@@ -55,15 +58,16 @@ class BAC(tf.keras.layers.Layer):
     def call(self,input,training=None):
         if training:
             temp=tf.dtypes.cast(input,tf.uint8)
-            mask1=tf.dtypes.cast(tf.random.uniform(input.shape)<0.07,tf.uint8)
-            mask2=tf.dtypes.cast(tf.random.uniform(input.shape)<self.p,tf.uint8)
+            mask1=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.07,tf.uint8)
+            mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.uint8)
             mask1=tf.dtypes.cast(mask1*temp,tf.uint8)
             mask2=tf.dtypes.cast(mask2*(1-temp),tf.uint8)
             mask=tf.bitwise.bitwise_xor(mask1,mask2)
             return tf.dtypes.cast(tf.bitwise.bitwise_xor(temp,mask),tf.float32)
-        return input
+        return tf.identity(input)
     def get_config(self):
         config = super(BAC, self).get_config()
+        config['p']=self.p
         return config
         
 def OHDecoder_SEQ(hidden_size,noise_layer,noise_param):
