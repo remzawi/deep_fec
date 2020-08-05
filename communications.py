@@ -66,6 +66,16 @@ def BER(y_result,y_true,one_hot=False,to_int=False):
         y_result=oh2bin(y_result)
     return np.count_nonzero(y_result-y_true)/np.prod(y_result.shape)
 
+def count_diff(y_result,y_true,one_hot=False,to_int=False):
+    if to_int:
+        if one_hot:
+            y_result=np.eye(256)[np.argmax(y_result,axis=1)]
+        else:
+            y_result=y_result>=0.5
+    if one_hot:
+        y_result=oh2bin(y_result)
+    return np.count_nonzero(y_result-y_true)
+
 def createTrainingDatasetDecoder(BPSK=True,noise=None,one_hot=False):
     X_train=createPolarCodewords()
     if BPSK:
@@ -77,8 +87,10 @@ def createTrainingDatasetDecoder(BPSK=True,noise=None,one_hot=False):
     else:
         return X_train,createBitVectors()
 
-def AWGN(X_train,snr=1,with_BPSK=True):
+def AWGN(X_train,snr=1,with_BPSK=True,noise_only=False,noise_shape=None):
     sigma =np.sqrt(0.5)*10**(-snr/20)
+    if noise_only:
+        return np.random.normal(0,sigma,noise_shape)
     if with_BPSK:
         X_train=BPSK(X_train)
     X_train=X_train+np.random.normal(0,sigma,X_train.shape)
@@ -197,6 +209,91 @@ def OHAutoencoderBER(encoder,decoder,noise_type,param_values,save_params=True,pa
         plt.xlabel('Parameter')
         plt.yscale('log')
         plt.plot(param_values,ber_list)
+        plt.show()
+        
+        
+def multBER(encoder_list,decoder_list,noise_type,param_values,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**5],plot_legend=None,save_fig=False,fig_name=None):
+    n=len(encoder_list)
+    m=len(param_values)
+    if n != len(decoder_list):
+        raise ValueError('missing encoder or decoder')
+    if noise_type == 'AWGN':
+        noise=AWGN
+    elif noise_type == 'BAC':
+        noise=BAC
+    elif noise_type == 'BSC':
+        noise=BSC
+    else:
+        raise ValueError('noise_type not one of (AWGN, BSC, BAC)')
+    if len(points_per_value)==1:
+        points_per_value=points_per_value*m
+    ber_list=np.zeros((n,m))
+    for i in tqdm(range(m)):
+        n_pass=points_per_value[i]//10**5
+        for k in range(n_pass):        
+            ind=np.random.randint(256,size=10**5)
+            y_ber=np.zeros((10**5,256))
+            y_ber[np.arange(10**5),ind]=1
+            y_ber_bin=oh2bin(y_ber)
+            noise_sample=noise(None,param_values[i],noise_only=True,noise_shape=(10**5,16))
+            for j in range(n):
+                X_ber=encoder_list[j].predict(y_ber)
+                X_ber=X_ber+noise_sample
+                y_pred=decoder_list[j].predict(X_ber)
+                ber_list[j,i]+=count_diff(y_pred,y_ber_bin,True,True)
+        r=points_per_value[i]%10**5
+        if r !=0:
+            ind=np.random.randint(256,size=r)
+            y_ber=np.zeros((r,256))
+            y_ber[np.arange(r),ind]=1
+            y_ber_bin=oh2bin(y_ber)
+            noise_sample=noise(None,noise_only=True,noise_shape=(r,16))
+            for j in range(n):
+                X_ber=encoder_list[j].predict(y_ber)
+                X_ber=X_ber+noise_sample
+                y_pred=decoder_list[j].predict(X_ber)
+                ber_list[j,i]+=count_diff(y_pred,y_ber_bin,True,True)
+        ber_list[:,i]/=points_per_value[i]*8
+    if save_params:
+        if params_name is None:
+            params_name='params.npy'
+            np.save(params_name,param_values)
+        elif len(params_name)==1:
+            np.save(params_name[0],param_values)
+        elif len(params_name)==n:
+            for i in range(n):
+                np.save(params_name[i],param_values)
+        else:
+            print("Incorrect parameters name, saving to params.py")
+            params_name='params.npy'
+            np.save(params_name,param_values)
+    if save_ber:
+        if ber_name is None:
+            ber_name='ber.npy'
+            np.save(ber_name,ber_list)
+        elif len(ber_name)==1:
+            np.save(ber_name[0],ber_list)
+        elif len(ber_name)==n:
+            for i in range(n):
+                np.save(ber_name[i],ber_list[i])
+        else:
+            print("Incorrect ber name, saving to ber.py")
+            ber_name='ber.py'
+            np.save(ber_name,ber_list)
+    if plot_ber:
+        plt.figure()
+        plt.ylabel('BER')
+        plt.xlabel('Parameter')
+        plt.yscale('log')
+        for i in range(n):
+            plt.plot(param_values,ber_list[i])
+        if plot_legend is not None:
+            plt.legend(plot_legend)
+        if save_fig:
+            if fig_name is not None:
+                plt.savefig(fig_name)
+            else:
+                plt.savefig('BERvsSNR.pdf')
         plt.show()
 
 #test_MAP()

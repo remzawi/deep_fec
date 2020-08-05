@@ -1,8 +1,13 @@
 import tensorflow as tf 
 import numpy as np
 from tensorflow.keras.layers import ReLU,BatchNormalization,LayerNormalization,Dense,Input
+from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt 
 
+
+def createDatasetOH(n):
+    X_train=np.repeat(np.eye(256),n,axis=0)
+    y_train=np.repeat(np.eye(256),n,axis=0)
 
 def ber_metric(y_true,y_pred):
     y_pred=y_pred>0.5
@@ -36,6 +41,19 @@ class AWGN(tf.keras.layers.Layer):
         config = super(AWGN, self).get_config()
         config['snr']=self.snr
         return config
+    
+class multi_AWGN(tf.keras.layers.Layer):
+    def __init__(self,**kwargs):
+        super(multi_AWGN,self).__init__(**kwargs)
+    def call(self,input,training=None):
+        if training:
+            snr=2*np.random.rand()
+            sigma=np.sqrt(0.5)*10**(-snr/20)
+            return tf.identity(input)+tf.random.normal(tf.shape(input),stddev=sigma)
+        return tf.identity(input)
+    def get_config(self):
+        config = super(multi_AWGN, self).get_config()
+        return config 
     
 class BSC(tf.keras.layers.Layer):
     def __init__(self,p,**kwargs):
@@ -81,7 +99,7 @@ def OHDecoder_SEQ(hidden_size,noise_layer,noise_param):
               metrics=[ber_metric_oh,'acc'])
     return model
 
-def OHEncoder(hidden_size,use_BN,use_LN):
+def OHEncoder(hidden_size,use_BN=False,use_LN=False):
     inputs=tf.keras.Input(shape=(256,))
     enc=Dense(hidden_size,activation='relu')(inputs)
     if use_BN:
@@ -92,9 +110,12 @@ def OHEncoder(hidden_size,use_BN,use_LN):
     model=tf.keras.Model(inputs,enc_output)
     return model
 
-def OHDecoder(hidden_size,noise_layer,noise_param,use_BN,use_LN):
+def OHDecoder(hidden_size,noise_layer,noise_param=None,use_BN=False,use_LN=False):
     inputs=tf.keras.Input(shape=(16,))
-    noise=noise_layer(noise_param)(inputs)
+    if noise_param is None:
+        noise=noise_layer()(inputs)
+    else:
+        noise=noise_layer(noise_param)(inputs)
     dec=Dense(hidden_size,activation='relu')(noise)
     if use_BN:
         dec=BatchNormalization()(dec)
@@ -104,12 +125,12 @@ def OHDecoder(hidden_size,noise_layer,noise_param,use_BN,use_LN):
     model=tf.keras.Model(inputs,dec_output)
     return model
 
-def OHAutoencoder(hidden_size1,hidden_size2,noise_layer,noise_param,use_BN=True,use_LN=False):
+def OHAutoencoder(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=True,use_LN=False,lr=0.001):
     inputs=tf.keras.Input(shape=(256,))
     encoder=OHEncoder(hidden_size1,use_BN,use_LN)
     decoder=OHDecoder(hidden_size2,noise_layer,noise_param,use_BN,use_LN)
     autoencoder=tf.keras.Model(inputs,decoder(encoder(inputs)))
-    autoencoder.compile(optimizer='adam',
+    autoencoder.compile(optimizer=Adam(lr),
               loss='categorical_crossentropy',
               metrics=[ber_metric_oh,'acc'])
     return autoencoder,encoder,decoder
@@ -117,7 +138,7 @@ def OHAutoencoder(hidden_size1,hidden_size2,noise_layer,noise_param,use_BN=True,
 
 def plot_history(history,to_plot=None,save=True,base_name=""): #if to_plot is None, plot everything, else only plot values in to_plot
     if to_plot is None:
-        to_plot=history.history.keys()
+        to_plot=history.keys()
     for metric in to_plot:
         plt.figure()
         plt.title(metric + " vs epoch")
