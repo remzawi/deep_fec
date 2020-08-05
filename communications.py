@@ -21,9 +21,7 @@ def unpackbits(x, num_bits,to_array=False):
   return (x & mask).astype(bool).astype(int).reshape(xshape + [num_bits])
 
 def createBitVectors():
-    x=np.zeros((256,1),dtype='uint8')
-    x[:,0]=np.arange(0,256,dtype='uint8')
-    return np.unpackbits(x,axis=1)
+    return oh2bin(np.eye(256))
 
 def createPolarCodewords():
     return np.mod(np.dot(createBitVectors(),G),2).astype('float32')
@@ -52,6 +50,7 @@ def loadDB(with_BPSK=True):
         except:
             createCdwsDB()
             return np.load('polarDB.npy')
+
 
 
 
@@ -115,9 +114,10 @@ def MAP_AWGN(x):
     return unpackbits(np.argmin(dist),8)
 
 def apply_MAP_AWGN(x,flip=False):
-    if flip:
-        return np.flip(np.array([MAP_AWGN(x[i]) for i in range(len(x))]),axis=1)
-    return np.array([MAP_AWGN(x[i]) for i in range(len(x))])
+    result=np.zeros((len(x),8))
+    for i in range(len(x)):
+        result[i]=MAP_AWGN(x[i])
+    return result
 
 def MAP_BSC(x):
     db=loadDB(with_BPSK=False)
@@ -166,13 +166,17 @@ def computePOLARBER(f,noise_type,param_values,one_hot=True,save_params=True,para
         plt.plot(param_values,ber_list)
         plt.show()
     
-def test_MAP():
-    ind=np.random.randint(256,size=10**4)
-    y_ber=unpackbits(ind,8)
-    X_ber=np.mod(np.dot(y_ber,G),2).astype('float32')
-    X_ber=AWGN(X_ber,8)
+def test_MAP(N,snr):
+    ind=np.random.randint(256,size=N)
+    y_ber=np.zeros((N,256))
+    y_ber[np.arange(N),ind]=1
+    y_ber_bin=oh2bin(y_ber)
+    X_ber=np.mod(np.dot(y_ber_bin,G),2)
+    noise_sample=AWGN(None,snr,noise_only=True,noise_shape=(N,16))
+    X_ber=2*X_ber-1
+    X_ber=X_ber+noise_sample
     y_pred=apply_MAP_AWGN(X_ber)
-    print(BER(np.flip(y_pred,axis=1),y_ber,one_hot=False,to_int=True))
+    print(BER(y_pred,y_ber_bin,one_hot=False,to_int=True))
     
 def OHAutoencoderBER(encoder,decoder,noise_type,param_values,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**6]):
     if noise_type == 'AWGN':
@@ -212,7 +216,7 @@ def OHAutoencoderBER(encoder,decoder,noise_type,param_values,save_params=True,pa
         plt.show()
         
         
-def multBER(encoder_list,decoder_list,noise_type,param_values,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**5],plot_legend=None,save_fig=False,fig_name=None):
+def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**5],plot_legend=None,save_fig=False,fig_name=None):
     n=len(encoder_list)
     m=len(param_values)
     if n != len(decoder_list):
@@ -227,7 +231,10 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,save_params=True,p
         raise ValueError('noise_type not one of (AWGN, BSC, BAC)')
     if len(points_per_value)==1:
         points_per_value=points_per_value*m
-    ber_list=np.zeros((n,m))
+    if do_polar_MAP:
+        ber_list=np.zeros((n+1,m))
+    else:
+        ber_list=np.zeros((n,m))
     for i in tqdm(range(m)):
         n_pass=points_per_value[i]//10**5
         for k in range(n_pass):        
@@ -241,6 +248,14 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,save_params=True,p
                 X_ber=X_ber+noise_sample
                 y_pred=decoder_list[j].predict(X_ber)
                 ber_list[j,i]+=count_diff(y_pred,y_ber_bin,True,True)
+            if do_polar_MAP:
+                X_ber=np.mod(np.dot(y_ber_bin,G),2)
+                if noise_type=='AWGN':
+                    X_ber=2.0*X_ber-1
+                X_ber=X_ber+noise_sample
+                y_pred=apply_MAP_AWGN(X_ber)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
+            
         r=points_per_value[i]%10**5
         if r !=0:
             ind=np.random.randint(256,size=r)
@@ -253,6 +268,13 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,save_params=True,p
                 X_ber=X_ber+noise_sample
                 y_pred=decoder_list[j].predict(X_ber)
                 ber_list[j,i]+=count_diff(y_pred,y_ber_bin,True,True)
+            if do_polar_MAP:
+                X_ber=np.mod(np.dot(y_ber_bin,G),2)
+                if noise_type=='AWGN':
+                    X_ber=2.0*X_ber-1
+                X_ber=X_ber+noise_sample
+                y_pred=apply_MAP_AWGN(X_ber)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
         ber_list[:,i]/=points_per_value[i]*8
     if save_params:
         if params_name is None:
@@ -273,8 +295,8 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,save_params=True,p
             np.save(ber_name,ber_list)
         elif len(ber_name)==1:
             np.save(ber_name[0],ber_list)
-        elif len(ber_name)==n:
-            for i in range(n):
+        elif len(ber_name)==len(ber_list):
+            for i in range(len(ber_name)):
                 np.save(ber_name[i],ber_list[i])
         else:
             print("Incorrect ber name, saving to ber.py")
@@ -285,7 +307,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,save_params=True,p
         plt.ylabel('BER')
         plt.xlabel('Parameter')
         plt.yscale('log')
-        for i in range(n):
+        for i in range(len(ber_list)):
             plt.plot(param_values,ber_list[i])
         if plot_legend is not None:
             plt.legend(plot_legend)
@@ -296,5 +318,5 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,save_params=True,p
                 plt.savefig('BERvsSNR.pdf')
         plt.show()
 
-#test_MAP()
+test_MAP(10000,2)
 
