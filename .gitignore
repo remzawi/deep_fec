@@ -136,3 +136,6 @@ dmypy.json
 *.h5
 *.hdf5
 checkpoint
+
+#pickle
+*.pkl

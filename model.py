@@ -1,8 +1,9 @@
 import tensorflow as tf 
 import numpy as np
-from tensorflow.keras.layers import ReLU,BatchNormalization,LayerNormalization,Dense,Input
+from tensorflow.keras.layers import ReLU,BatchNormalization,LayerNormalization,Dense,Input,Lambda
 from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt 
+from mish import *
 
 
 def createDatasetOH(n):
@@ -138,12 +139,13 @@ def OHAutoencoder(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=
 def OHEncoder_test(hidden_size,use_BN=False,use_LN=False):
     inputs=tf.keras.Input(shape=(256,))
     enc=Dense(hidden_size)(inputs)
-    enc=tf.keras.activations.swish(enc)
+    enc=Mish(enc)
     if use_BN:
         enc=BatchNormalization()(enc)
     elif use_LN:
         enc=LayerNormalization()(enc)
-    enc_output=Dense(16,activation=lambda x: tf.tanh(2/3*x))(enc)
+    enc_output=Dense(16)(enc)
+    enc_output=Lambda(lambda x : tf.tanh(2/3*x))(enc_output)
     model=tf.keras.Model(inputs,enc_output)
     return model
 
@@ -154,7 +156,7 @@ def OHDecoder_test(hidden_size,noise_layer,noise_param=None,use_BN=False,use_LN=
     else:
         noise=noise_layer(noise_param)(inputs)
     dec=Dense(hidden_size)(noise)
-    dec=tf.keras.activations.swish(dec)
+    dec=Mish(dec)
     if use_BN:
         dec=BatchNormalization()(dec)
     elif use_LN:
