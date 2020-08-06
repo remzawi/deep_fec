@@ -34,6 +34,10 @@ def oh2bin(x):
         return unpackbits(np.argmax(x),8)
     return unpackbits(np.argmax(x,axis=1),8)
 
+def bin2oh(x):
+    dist=np.sum(np.abs(createBitVectors()-x),axis=1)
+    return np.eye(256)[np.argmax(dist)]
+
 def createCdwsDB():
     np.save('polarDB.npy',createPolarCodewords())
 
@@ -108,27 +112,27 @@ def BAC(X_train,p=0.2,q=0.07):
 
 
 
-def MAP_AWGN(x):
+def MAP_AWGN(x,p=None,q=None):
     db=loadDB()
     dist=np.sum((db-x)**2,axis=1)
     return unpackbits(np.argmin(dist),8)
 
-def apply_MAP_AWGN(x,flip=False):
-    result=np.zeros((len(x),8))
-    for i in range(len(x)):
-        result[i]=MAP_AWGN(x[i])
-    return result
-
-def MAP_BSC(x):
+def MAP_BSC(x,p=None,q=None):
     db=loadDB(with_BPSK=False)
     dist=np.count_nonzero(db-x,axis=1)
     return unpackbits(np.argmin(dist),8)
 
-def MAP_BAC(x,p,q):
+def MAP_BAC(x,p,q=0.07):
     db=loadDB(with_BPSK=False)
     dist=np.log(1-p)*np.count_nonzero(1-db,axis=1)+np.log(1-q)*np.count_nonzero(db,axis=1)
     dist+=np.log(p/(1-p))*np.sum((db<0.5)*x,axis=1)+np.log(q/(1-q))*np.sum((db>0.5)*x,axis=1)
     return unpackbits(np.argmin(dist),8)
+
+def apply_MAP(x,MAP,p,q=0.07):
+    result=np.zeros((len(x),8))
+    for i in range(len(x)):
+        result[i]=MAP(x[i],p)
+    return result
 
 
 def computePOLARBER(f,noise_type,param_values,one_hot=True,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**6]):
@@ -223,10 +227,13 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
         raise ValueError('missing encoder or decoder')
     if noise_type == 'AWGN':
         noise=AWGN
+        MAP=MAP_AWGN
     elif noise_type == 'BAC':
         noise=BAC
+        MAP=MAP_BAC
     elif noise_type == 'BSC':
         noise=BSC
+        MAP=MAP_BSC
     else:
         raise ValueError('noise_type not one of (AWGN, BSC, BAC)')
     if len(points_per_value)==1:
@@ -253,7 +260,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
                 if noise_type=='AWGN':
                     X_ber=2.0*X_ber-1
                 X_ber=X_ber+noise_sample
-                y_pred=apply_MAP_AWGN(X_ber)
+                y_pred=apply_MAP(X_ber,MAP,param_values[i])
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
             
         r=points_per_value[i]%10**5
@@ -273,7 +280,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
                 if noise_type=='AWGN':
                     X_ber=2.0*X_ber-1
                 X_ber=X_ber+noise_sample
-                y_pred=apply_MAP_AWGN(X_ber)
+                y_pred=apply_MAP(X_ber,MAP,param_values[i])
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
         ber_list[:,i]/=points_per_value[i]*8
     if save_params:
@@ -317,6 +324,45 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
             else:
                 plt.savefig('BERvsSNR.pdf')
         plt.show()
+        
+def computeVarianceAWGN(encoder,do_polar=True,print_code=False):
+    u=np.eye(256)
+    x=encoder.predict(u)
+    m=np.mean(x)
+    v=np.var(x)
+    print('Mean of the code: ',m)
+    print('Variance of the code: ',v)
+    if do_polar:
+        u_polar=oh2bin(u)
+        x_polar=2*np.mod(np.dot(u_polar,G),2)-1
+        m_polar=np.mean(x_polar)
+        v_polar=np.var(x_polar)
+        print('Mean of the polar code: ',m_polar)
+        print('Variance of the polar code: ',v_polar)
+    if print_code:
+        print(x)
+    
+def testLinearAWGN(encoder):
+    ind=np.random.randint(256,size=2)
+    u0=unpackbits(ind[0],8)
+    u1=unpackbits(ind[1],8)
+    u2=np.mod(u0+u1,2)
+    print(u0)
+    print(u1)
+    print(u2)
+    u=np.zeros((3,256))
+    u[0]=bin2oh(u0)
+    u[1]=bin2oh(u1)
+    u[2]=bin2oh(u2)
+    x=(encoder.predict(u)+1)/2
+    print(x[0])
+    print(x[1])
+    print(x[2])
+    if np.sum(np.abs(x[2]-np.mod(x[0]+x[1],2)))>0.1:
+        print('The code is not linear')
+    else:
+        print('The code is linear')
+    
 
-test_MAP(10000,2)
+#test_MAP(10000,2)
 

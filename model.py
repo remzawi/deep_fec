@@ -26,7 +26,7 @@ def ber_metric_oh(y_true,y_pred):
         unpacked_true = tf.dtypes.cast(tf.reshape(tf.bitwise.bitwise_and(tf.dtypes.cast(tf.math.argmax(y_true[i]),tf.uint8), b), [-1]),tf.float32)
         unpacked_pred = tf.dtypes.cast(tf.reshape(tf.bitwise.bitwise_and(tf.dtypes.cast(tf.math.argmax(y_pred[i]),tf.uint8), b), [-1]),tf.float32)
         count_diff+=tf.math.count_nonzero(tf.math.abs(unpacked_pred-unpacked_true)>0.1)
-    return tf.dtypes.cast(count_diff,tf.float32)/tf.dtypes.cast(tf.math.reduce_prod(unpacked_pred.shape),tf.float32)
+    return tf.dtypes.cast(count_diff,tf.float32)/(8.0*y_true.shape[0])
 
 class AWGN(tf.keras.layers.Layer):
     def __init__(self,snr,**kwargs):
@@ -35,7 +35,7 @@ class AWGN(tf.keras.layers.Layer):
         self.sigma=np.sqrt(0.5)*10**(-snr/20)
     def call(self,input,training=None):
         if training:
-            return tf.identity(input)+tf.random.normal(tf.shape(input),stddev=self.sigma)
+            return tf.identity(input)+tf.no_gradient(tf.random.normal(tf.shape(input),stddev=self.sigma))
         return tf.identity(input)
     def get_config(self):
         config = super(AWGN, self).get_config()
@@ -49,7 +49,7 @@ class multi_AWGN(tf.keras.layers.Layer):
         if training:
             snr=2*np.random.rand()
             sigma=np.sqrt(0.5)*10**(-snr/20)
-            return tf.identity(input)+tf.random.normal(tf.shape(input),stddev=sigma)
+            return tf.identity(input)+tf.no_gradient(tf.random.normal(tf.shape(input),stddev=sigma))
         return tf.identity(input)
     def get_config(self):
         config = super(multi_AWGN, self).get_config()
@@ -62,7 +62,7 @@ class BSC(tf.keras.layers.Layer):
     def call(self,input,training=None):
         if training:
             mask=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.uint8)
-            return tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.dtypes.cast(input,tf.uint8),mask),tf.float32)
+            return tf.no_gradient(tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.dtypes.cast(input,tf.uint8),mask),tf.float32)-tf.identity(input))+tf.identity(input)
         return tf.identity(input)
     def get_config(self):
         config = super(BSC, self).get_config()
@@ -81,7 +81,7 @@ class BAC(tf.keras.layers.Layer):
             mask1=tf.dtypes.cast(mask1*temp,tf.uint8)
             mask2=tf.dtypes.cast(mask2*(1-temp),tf.uint8)
             mask=tf.bitwise.bitwise_xor(mask1,mask2)
-            return tf.dtypes.cast(tf.bitwise.bitwise_xor(temp,mask),tf.float32)
+            return tf.no_gradient(tf.dtypes.cast(tf.bitwise.bitwise_xor(temp,mask),tf.float32)-tf.identity(input))+tf.identity(input)
         return tf.identity(input)
     def get_config(self):
         config = super(BAC, self).get_config()
@@ -135,6 +135,43 @@ def OHAutoencoder(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=
               metrics=[ber_metric_oh,'acc'])
     return autoencoder,encoder,decoder
 
+def OHEncoder_test(hidden_size,use_BN=False,use_LN=False):
+    inputs=tf.keras.Input(shape=(256,))
+    enc=Dense(hidden_size)(inputs)
+    enc=tf.keras.activations.swish(enc)
+    if use_BN:
+        enc=BatchNormalization()(enc)
+    elif use_LN:
+        enc=LayerNormalization()(enc)
+    enc_output=Dense(16,activation=lambda x: tf.tanh(2/3*x))(enc)
+    model=tf.keras.Model(inputs,enc_output)
+    return model
+
+def OHDecoder_test(hidden_size,noise_layer,noise_param=None,use_BN=False,use_LN=False):
+    inputs=tf.keras.Input(shape=(16,))
+    if noise_param is None:
+        noise=noise_layer()(inputs)
+    else:
+        noise=noise_layer(noise_param)(inputs)
+    dec=Dense(hidden_size)(noise)
+    dec=tf.keras.activations.swish(dec)
+    if use_BN:
+        dec=BatchNormalization()(dec)
+    elif use_LN:
+        dec=LayerNormalization()(dec)
+    dec_output=Dense(256,activation='softmax')(dec)
+    model=tf.keras.Model(inputs,dec_output)
+    return model
+
+def OHAutoencoder_test(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=True,use_LN=False,lr=0.001):
+    inputs=tf.keras.Input(shape=(256,))
+    encoder=OHEncoder_test(hidden_size1,use_BN,use_LN)
+    decoder=OHDecoder_test(hidden_size2,noise_layer,noise_param,use_BN,use_LN)
+    autoencoder=tf.keras.Model(inputs,decoder(encoder(inputs)))
+    autoencoder.compile(optimizer=Adam(lr),
+              loss='categorical_crossentropy',
+              metrics=[ber_metric_oh,'acc'])
+    return autoencoder,encoder,decoder
 
 def plot_history(history,to_plot=None,save=True,base_name=""): #if to_plot is None, plot everything, else only plot values in to_plot
     if to_plot is None:
