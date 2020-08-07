@@ -90,7 +90,9 @@ def createTrainingDatasetDecoder(BPSK=True,noise=None,one_hot=False):
     else:
         return X_train,createBitVectors()
 
-def AWGN(X_train,snr=1,with_BPSK=True,noise_only=False,noise_shape=None):
+def awgn(X_train,snr=1,with_BPSK=True,noise_only=False,noise_shape=None,apply_noise=None):
+    if apply_noise is not None:
+        return X_train+apply_noise
     sigma =np.sqrt(0.5)*10**(-snr/20)
     if noise_only:
         return np.random.normal(0,sigma,noise_shape)
@@ -99,11 +101,16 @@ def AWGN(X_train,snr=1,with_BPSK=True,noise_only=False,noise_shape=None):
     X_train=X_train+np.random.normal(0,sigma,X_train.shape)
     return X_train
 
-def BSC(X_train,p=0.2):
+def bsc(X_train,p=0.2,noise_only=False,noise_shape=None,apply_noise=None):
+    if apply_noise is not None:
+        return np.mod(X_train+apply_noise,2)
+    if noise_only:
+        mask=np.random.rand(noise_shape[0],noise_shape[1])<=p
+        return mask
     mask=np.random.rand(X_train.shape[0],X_train.shape[1])<=p
     return np.mod(X_train+mask,2)
 
-def BAC(X_train,p=0.2,q=0.07):
+def bac(X_train,p=0.2,q=0.07):
     mask1=np.random.rand(X_train.shape[0],X_train.shape[1])<=p
     mask2=np.random.rand(X_train.shape[0],X_train.shape[1])<=q
     mask1=mask1*(1-X_train)
@@ -226,13 +233,13 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
     if n != len(decoder_list):
         raise ValueError('missing encoder or decoder')
     if noise_type == 'AWGN':
-        noise=AWGN
+        noise=awgn
         MAP=MAP_AWGN
     elif noise_type == 'BAC':
-        noise=BAC
+        noise=bac
         MAP=MAP_BAC
     elif noise_type == 'BSC':
-        noise=BSC
+        noise=bsc
         MAP=MAP_BSC
     else:
         raise ValueError('noise_type not one of (AWGN, BSC, BAC)')
@@ -252,14 +259,14 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
             noise_sample=noise(None,param_values[i],noise_only=True,noise_shape=(10**5,16))
             for j in range(n):
                 X_ber=encoder_list[j].predict(y_ber)
-                X_ber=X_ber+noise_sample
+                X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=decoder_list[j].predict(X_ber)
                 ber_list[j,i]+=count_diff(y_pred,y_ber_bin,True,True)
             if do_polar_MAP:
                 X_ber=np.mod(np.dot(y_ber_bin,G),2)
                 if noise_type=='AWGN':
                     X_ber=2.0*X_ber-1
-                X_ber=X_ber+noise_sample
+                X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=apply_MAP(X_ber,MAP,param_values[i])
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
             
@@ -272,14 +279,14 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
             noise_sample=noise(None,noise_only=True,noise_shape=(r,16))
             for j in range(n):
                 X_ber=encoder_list[j].predict(y_ber)
-                X_ber=X_ber+noise_sample
+                X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=decoder_list[j].predict(X_ber)
                 ber_list[j,i]+=count_diff(y_pred,y_ber_bin,True,True)
             if do_polar_MAP:
                 X_ber=np.mod(np.dot(y_ber_bin,G),2)
                 if noise_type=='AWGN':
                     X_ber=2.0*X_ber-1
-                X_ber=X_ber+noise_sample
+                X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=apply_MAP(X_ber,MAP,param_values[i])
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
         ber_list[:,i]/=points_per_value[i]*8

@@ -77,6 +77,37 @@ class BSC(tf.keras.layers.Layer):
         config = super(BSC, self).get_config()
         config['p']=self.p
         return config
+    
+class BSC_OH(tf.keras.layers.Layer):
+    def __init__(self,p,**kwargs):
+        super(BSC_OH,self).__init__(**kwargs)
+        self.p=p
+    def call(self,input,training=None):
+        if training:
+            rounded=tf.identity(input)>0.5
+            mask=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.uint8)
+            return tf.stop_gradient(tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.dtypes.cast(rounded,tf.uint8),mask),tf.float32)-tf.identity(input))+tf.identity(input)
+        return tf.identity(input)
+    def get_config(self):
+        config = super(BSC_OH, self).get_config()
+        config['p']=self.p
+        return config
+    
+class BSC_OH2(tf.keras.layers.Layer):
+    def __init__(self,p,**kwargs):
+        super(BSC_OH2,self).__init__(**kwargs)
+        self.p=p
+    def call(self,input,training=None):
+        if training:
+            rounded=tf.math.round(input)
+            mask=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.float32)
+            output=rounded+mask
+            return tf.stop_gradient(tf.identity(output)*(1-tf.dtypes.cast(output>1.5,tf.float32))-tf.identity(input))+tf.identity(input)
+        return tf.identity(input)
+    def get_config(self):
+        config = super(BSC_OH2, self).get_config()
+        config['p']=self.p
+        return config
 
 class BAC(tf.keras.layers.Layer):
     def __init__(self,p,**kwargs):
@@ -84,13 +115,32 @@ class BAC(tf.keras.layers.Layer):
         self.p=p
     def call(self,input,training=None):
         if training:
-            temp=tf.dtypes.cast(input,tf.uint8)
+            temp=tf.dtypes.cast(tf.identity(input),tf.uint8)
             mask1=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.07,tf.uint8)
             mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.uint8)
             mask1=tf.dtypes.cast(mask1*temp,tf.uint8)
             mask2=tf.dtypes.cast(mask2*(1-temp),tf.uint8)
             mask=tf.bitwise.bitwise_xor(mask1,mask2)
-            return tf.dtypes.cast(tf.bitwise.bitwise_xor(temp,mask),tf.float32)
+            return tf.stop_gradient(tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.identity(temp),mask),tf.float32)-tf.identity(input))+tf.identity(input)
+        return tf.identity(input)
+    def get_config(self):
+        config = super(BAC, self).get_config()
+        config['p']=self.p
+        return config
+    
+class BAC_OH(tf.keras.layers.Layer):
+    def __init__(self,p,**kwargs):
+        super(BAC,self).__init__(**kwargs)
+        self.p=p
+    def call(self,input,training=None):
+        if training:
+            temp=tf.dtypes.cast(tf.identity(input)>0.5,tf.uint8)
+            mask1=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.07,tf.uint8)
+            mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.uint8)
+            mask1=tf.dtypes.cast(mask1*temp,tf.uint8)
+            mask2=tf.dtypes.cast(mask2*(1-temp),tf.uint8)
+            mask=tf.bitwise.bitwise_xor(mask1,mask2)
+            return tf.stop_gradient(tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.identity(temp),mask),tf.float32)-tf.identity(input))+tf.identity(input)
         return tf.identity(input)
     def get_config(self):
         config = super(BAC, self).get_config()
@@ -108,14 +158,14 @@ def OHDecoder_SEQ(hidden_size,noise_layer,noise_param):
               metrics=[ber_metric_oh,'acc'])
     return model
 
-def OHEncoder(hidden_size,use_BN=False,use_LN=False):
+def OHEncoder(hidden_size,use_BN=False,use_LN=False,act='tanh'):
     inputs=tf.keras.Input(shape=(256,))
     enc=Dense(hidden_size,activation='relu')(inputs)
     if use_BN:
         enc=BatchNormalization()(enc)
     elif use_LN:
         enc=LayerNormalization()(enc)
-    enc_output=Dense(16,activation='tanh')(enc)
+    enc_output=Dense(16,activation=act)(enc)
     model=tf.keras.Model(inputs,enc_output)
     return model
 
@@ -139,6 +189,51 @@ def OHAutoencoder(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=
     encoder=OHEncoder(hidden_size1,use_BN,use_LN)
     decoder=OHDecoder(hidden_size2,noise_layer,noise_param,use_BN,use_LN)
     autoencoder=tf.keras.Model(inputs,decoder(encoder(inputs)))
+    autoencoder.compile(optimizer=Adam(lr),
+              loss='categorical_crossentropy',
+              metrics=[ber_metric_oh,'acc'])
+    return autoencoder,encoder,decoder
+
+def OHEncoder2(hidden_size,use_BN=False,use_LN=False,act='tanh'):
+    inputs=tf.keras.Input(shape=(256,))
+    enc=Dense(hidden_size,activation='relu')(inputs)
+    if use_BN:
+        enc=BatchNormalization()(enc)
+        enc=Dense(hidden_size,activation='relu')(enc)
+        enc=BatchNormalization()(enc)
+    elif use_LN:
+        enc=LayerNormalization()(enc)
+        enc=Dense(hidden_size,activation='relu')(enc)
+        enc=LayerNormalization()(enc)
+    else:
+        enc=Dense(hidden_size,activation='relu')(enc)
+    enc_output=Dense(16,activation=act)(enc)
+    model=tf.keras.Model(inputs,enc_output)
+    return model
+
+def OHDecoder2(hidden_size,use_BN=False,use_LN=False):
+    inputs=tf.keras.Input(shape=(16,))
+    dec=Dense(hidden_size,activation='relu')(inputs)
+    if use_BN:
+        dec=BatchNormalization()(dec)
+    elif use_LN:
+        dec=LayerNormalization()(dec)
+    dec_output=Dense(256,activation='softmax')(dec)
+    model=tf.keras.Model(inputs,dec_output)
+    return model
+
+def OHAutoencoder2(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=True,use_LN=False,lr=0.001):
+    inputs=tf.keras.Input(shape=(256,))
+    encoder=OHEncoder(hidden_size1,use_BN,use_LN,'sigmoid')
+    decoder=OHDecoder2(hidden_size2,use_BN,use_LN)
+    if noise_param is None:
+        noise=noise_layer()
+    else:
+        noise=noise_layer(noise_param)
+    enc=encoder(inputs)
+    noisy=noise(enc)
+    outputs=decoder(noisy)
+    autoencoder=tf.keras.Model(inputs,outputs)
     autoencoder.compile(optimizer=Adam(lr),
               loss='categorical_crossentropy',
               metrics=[ber_metric_oh,'acc'])
