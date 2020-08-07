@@ -3,7 +3,6 @@ import numpy as np
 from tensorflow.keras.layers import ReLU,BatchNormalization,LayerNormalization,Dense,Input,Lambda
 from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt 
-from mish import *
 
 
 def createDatasetOH(n):
@@ -36,11 +35,20 @@ class AWGN(tf.keras.layers.Layer):
         self.sigma=np.sqrt(0.5)*10**(-snr/20)
     def call(self,input,training=None):
         if training:
-            return tf.identity(input)+tf.no_gradient(tf.random.normal(tf.shape(input),stddev=self.sigma))
+            return tf.identity(input)+tf.stop_gradient(tf.random.normal(tf.shape(input),stddev=self.sigma))
         return tf.identity(input)
     def get_config(self):
         config = super(AWGN, self).get_config()
         config['snr']=self.snr
+        return config
+    
+class Mish(tf.keras.layers.Layer):
+    def __init__(self,**kwargs):
+        super(Mish,self).__init__(**kwargs)
+    def call(self,input,training=None):
+        return input * tf.math.tanh(tf.math.softplus(input))
+    def get_config(self):
+        config = super(Mish, self).get_config()
         return config
     
 class multi_AWGN(tf.keras.layers.Layer):
@@ -50,7 +58,7 @@ class multi_AWGN(tf.keras.layers.Layer):
         if training:
             snr=2*np.random.rand()
             sigma=np.sqrt(0.5)*10**(-snr/20)
-            return tf.identity(input)+tf.no_gradient(tf.random.normal(tf.shape(input),stddev=sigma))
+            return tf.identity(input)+tf.random.normal(tf.shape(input),stddev=sigma)
         return tf.identity(input)
     def get_config(self):
         config = super(multi_AWGN, self).get_config()
@@ -63,7 +71,7 @@ class BSC(tf.keras.layers.Layer):
     def call(self,input,training=None):
         if training:
             mask=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.uint8)
-            return tf.no_gradient(tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.dtypes.cast(input,tf.uint8),mask),tf.float32)-tf.identity(input))+tf.identity(input)
+            return tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.dtypes.cast(input,tf.uint8),mask),tf.float32)
         return tf.identity(input)
     def get_config(self):
         config = super(BSC, self).get_config()
@@ -82,7 +90,7 @@ class BAC(tf.keras.layers.Layer):
             mask1=tf.dtypes.cast(mask1*temp,tf.uint8)
             mask2=tf.dtypes.cast(mask2*(1-temp),tf.uint8)
             mask=tf.bitwise.bitwise_xor(mask1,mask2)
-            return tf.no_gradient(tf.dtypes.cast(tf.bitwise.bitwise_xor(temp,mask),tf.float32)-tf.identity(input))+tf.identity(input)
+            return tf.dtypes.cast(tf.bitwise.bitwise_xor(temp,mask),tf.float32)
         return tf.identity(input)
     def get_config(self):
         config = super(BAC, self).get_config()
@@ -139,7 +147,7 @@ def OHAutoencoder(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=
 def OHEncoder_test(hidden_size,use_BN=False,use_LN=False):
     inputs=tf.keras.Input(shape=(256,))
     enc=Dense(hidden_size)(inputs)
-    enc=Mish(enc)
+    enc=Mish()(enc)
     if use_BN:
         enc=BatchNormalization()(enc)
     elif use_LN:
@@ -156,7 +164,7 @@ def OHDecoder_test(hidden_size,noise_layer,noise_param=None,use_BN=False,use_LN=
     else:
         noise=noise_layer(noise_param)(inputs)
     dec=Dense(hidden_size)(noise)
-    dec=Mish(dec)
+    dec=Mish()(dec)
     if use_BN:
         dec=BatchNormalization()(dec)
     elif use_LN:
