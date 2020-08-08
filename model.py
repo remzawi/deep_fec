@@ -130,7 +130,7 @@ class BAC(tf.keras.layers.Layer):
     
 class BAC_OH(tf.keras.layers.Layer):
     def __init__(self,p,**kwargs):
-        super(BAC,self).__init__(**kwargs)
+        super(BAC_OH,self).__init__(**kwargs)
         self.p=p
     def call(self,input,training=None):
         if training:
@@ -143,10 +143,31 @@ class BAC_OH(tf.keras.layers.Layer):
             return tf.stop_gradient(tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.identity(temp),mask),tf.float32)-tf.identity(input))+tf.identity(input)
         return tf.identity(input)
     def get_config(self):
-        config = super(BAC, self).get_config()
+        config = super(BAC_OH, self).get_config()
         config['p']=self.p
         return config
-        
+    
+class BAC_OH2(tf.keras.layers.Layer):
+    def __init__(self,p,**kwargs):
+        super(BAC_OH2,self).__init__(**kwargs)
+        self.p=p
+    def call(self,input,training=None):
+        if training:
+            rounded=tf.math.round(tf.identity(input))
+            mask1=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.07,tf.float32)
+            mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.float32)
+            mask1=mask1*rounded
+            mask2=mask2*(1-rounded)
+            mask=mask1+mask2
+            mask=mask*(1-tf.dtypes.cast(mask>1.5,tf.float32))
+            output=rounded+mask
+            return tf.stop_gradient(tf.identity(output)*(1-tf.dtypes.cast(output>1.5,tf.float32))-tf.identity(input))+tf.identity(input)
+        return tf.identity(input)
+    def get_config(self):
+        config = super(BAC_OH2, self).get_config()
+        config['p']=self.p
+        return config
+    
 def OHDecoder_SEQ(hidden_size,noise_layer,noise_param):
     model=tf.keras.Sequential()
     model.add(noise_layer(noise_param))

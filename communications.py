@@ -110,11 +110,20 @@ def bsc(X_train,p=0.2,noise_only=False,noise_shape=None,apply_noise=None):
     mask=np.random.rand(X_train.shape[0],X_train.shape[1])<=p
     return np.mod(X_train+mask,2)
 
-def bac(X_train,p=0.2,q=0.07):
+def bac(X_train,p=0.2,q=0.07,noise_only=False,noise_shape=None,apply_noise=None):
+    if apply_noise is not None:
+        mask1=apply_noise[0]*(1-X_train)
+        mask2=apply_noise[1]*X_train
+        return np.mod(X_train+mask1+mask2,2)
+    if noise_only:
+        mask1=np.random.rand(noise_shape[0],noise_shape[1])<=p
+        mask2=np.random.rand(noise_shape[0],noise_shape[1])<=q
+        return (mask1,mask2)
     mask1=np.random.rand(X_train.shape[0],X_train.shape[1])<=p
     mask2=np.random.rand(X_train.shape[0],X_train.shape[1])<=q
     mask1=mask1*(1-X_train)
     mask2=mask2*X_train
+    
     return np.mod(X_train+mask1+mask2,2)
 
 
