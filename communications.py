@@ -128,36 +128,33 @@ def bac(X_train,p=0.2,q=0.1,noise_only=False,noise_shape=None,apply_noise=None):
 
 
 
-def MAP_AWGN(x,p=None,q=None):
-    db=loadDB()
+def MAP_AWGN(db,x,p=None,q=None):
     dist=np.sum((db-x)**2,axis=1)
     return unpackbits(np.argmin(dist),8)
 
-def MAP_BSC(x,p=None,q=None):
-    db=loadDB(with_BPSK=False)
+def MAP_BSC(db,x,p=None,q=None):
     dist=np.count_nonzero(db-x,axis=1)
     return unpackbits(np.argmin(dist),8)
 
-def MAP_BAC(x,p,q=0.07):
-    db=loadDB(with_BPSK=False)
+def MAP_BAC(db,x,p,q=0.07):
     dist=np.log(1-p)*np.count_nonzero(1-db,axis=1)+np.log(1-q)*np.count_nonzero(db,axis=1)
     dist+=np.log(p/(1-p))*np.sum((db<0.5)*np.mod(db+x,2),axis=1)+np.log(q/(1-q))*np.sum((db>0.5)*np.mod(db+x,2),axis=1)
     return unpackbits(np.argmin(dist),8)
 
-def apply_MAP(x,MAP,p,q=0.07):
+def apply_MAP(db,x,MAP,p,q=0.07):
     result=np.zeros((len(x),8))
     for i in range(len(x)):
-        result[i]=MAP(x[i],p,q)
+        result[i]=MAP(db,x[i],p,q)
     return result
 
 
 def computePOLARBER(f,noise_type,param_values,one_hot=True,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**6]):
     if noise_type == 'AWGN':
-        noise=AWGN
+        noise=awgn
     elif noise_type == 'BAC':
-        noise=BAC
+        noise=bac
     elif noise_type == 'BSC':
-        noise=BSC
+        noise=bsc
     else:
         raise ValueError('noise_type not one of (AWGN, BSC, BAC)')
     if len(points_per_value)==1:
@@ -192,19 +189,19 @@ def test_MAP(N,snr):
     y_ber[np.arange(N),ind]=1
     y_ber_bin=oh2bin(y_ber)
     X_ber=np.mod(np.dot(y_ber_bin,G),2)
-    noise_sample=AWGN(None,snr,noise_only=True,noise_shape=(N,16))
+    noise_sample=awgn(None,snr,noise_only=True,noise_shape=(N,16))
     X_ber=2*X_ber-1
     X_ber=X_ber+noise_sample
-    y_pred=apply_MAP_AWGN(X_ber)
+    y_pred=apply_MAP(loadDB(),X_ber,MAP_AWGN,snr)
     print(BER(y_pred,y_ber_bin,one_hot=False,to_int=True))
     
 def OHAutoencoderBER(encoder,decoder,noise_type,param_values,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**6]):
     if noise_type == 'AWGN':
-        noise=AWGN
+        noise=awgn
     elif noise_type == 'BAC':
-        noise=BAC
+        noise=bac
     elif noise_type == 'BSC':
-        noise=BSC
+        noise=bsc
     else:
         raise ValueError('noise_type not one of (AWGN, BSC, BAC)')
     if len(points_per_value)==1:
@@ -256,8 +253,18 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
         points_per_value=points_per_value*m
     if do_polar_MAP and do_enc_MAP:
         ber_list=np.zeros((n+2,m))
-    elif do_polar_MAP or do_enc_MAP:
+        db_polar=createPolarCodewords()
+        db_enc=np.round(encoder_list[0].predict(np.eye(256)))
+        if noise_type=='AWGN':
+            db_polar=2*db_polar-1
+    elif do_polar_MAP:
         ber_list=np.zeros((n+1,m))
+        db_polar=createPolarCodewords()
+        if noise_type=='AWGN':
+            db_polar=2*db_polar-1
+    elif do_enc_MAP:
+        ber_list=np.zeros((n+1,m))
+        db_enc=np.round(encoder_list[0].predict(np.eye(256)))
     else:
         ber_list=np.zeros((n,m))
     for i in tqdm(range(m)):
@@ -278,23 +285,23 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
                 if noise_type=='AWGN':
                     X_ber=2.0*X_ber-1
                 X_ber=noise(X_ber,apply_noise=noise_sample)
-                y_pred=apply_MAP(X_ber,MAP,param_values[i])
+                y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i])
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
                 X_ber=encoder_list[0].predict(y_ber)
                 X_ber=noise(X_ber,apply_noise=noise_sample)
-                y_pred=apply_MAP(X_ber,MAP,param_values[i])
+                y_pred=apply_MAP(db_enc,X_ber,MAP,param_values[i])
                 ber_list[n+1,i]+=count_diff(y_pred,y_ber_bin,True,True)
             elif do_polar_MAP:
                 X_ber=np.mod(np.dot(y_ber_bin,G),2)
                 if noise_type=='AWGN':
                     X_ber=2.0*X_ber-1
                 X_ber=noise(X_ber,apply_noise=noise_sample)
-                y_pred=apply_MAP(X_ber,MAP,param_values[i])
+                y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i])
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
             elif do_enc_MAP:
                 X_ber=encoder_list[0].predict(y_ber)
                 X_ber=noise(X_ber,apply_noise=noise_sample)
-                y_pred=apply_MAP(X_ber,MAP,param_values[i])
+                y_pred=apply_MAP(db_enc,X_ber,MAP,param_values[i])
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,True,True)
         r=points_per_value[i]%10**5
         if r !=0:
@@ -313,23 +320,23 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
                 if noise_type=='AWGN':
                     X_ber=2.0*X_ber-1
                 X_ber=noise(X_ber,apply_noise=noise_sample)
-                y_pred=apply_MAP(X_ber,MAP,param_values[i])
+                y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i])
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
                 X_ber=np.round(encoder_list[0].predict(y_ber))
                 X_ber=noise(X_ber,apply_noise=noise_sample)
-                y_pred=apply_MAP(X_ber,MAP,param_values[i])
+                y_pred=apply_MAP(db_enc,X_ber,MAP,param_values[i])
                 ber_list[n+1,i]+=count_diff(y_pred,y_ber_bin,False,True)
             elif do_polar_MAP:
                 X_ber=np.mod(np.dot(y_ber_bin,G),2)
                 if noise_type=='AWGN':
                     X_ber=2.0*X_ber-1
                 X_ber=noise(X_ber,apply_noise=noise_sample)
-                y_pred=apply_MAP(X_ber,MAP,param_values[i])
+                y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i])
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
             elif do_enc_MAP:
                 X_ber=np.round(encoder_list[0].predict(y_ber))
                 X_ber=noise(X_ber,apply_noise=noise_sample)
-                y_pred=apply_MAP(X_ber,MAP,param_values[i])
+                y_pred=apply_MAP(db_enc,X_ber,MAP,param_values[i])
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
         ber_list[:,i]/=points_per_value[i]*8
     if save_params:
