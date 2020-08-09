@@ -74,7 +74,7 @@ def count_diff(y_result,y_true,one_hot=False,to_int=False):
         if one_hot:
             y_result=np.eye(256)[np.argmax(y_result,axis=1)]
         else:
-            y_result=y_result>=0.5
+            y_result=np.round(y_result)
     if one_hot:
         y_result=oh2bin(y_result)
     return np.count_nonzero(y_result-y_true)
@@ -139,7 +139,7 @@ def MAP_BSC(db,x,p=None,q=None):
 def MAP_BAC(db,x,p,q=0.07):
     dist=np.log(1-p)*np.count_nonzero(1-db,axis=1)+np.log(1-q)*np.count_nonzero(db,axis=1)
     dist+=np.log(p/(1-p))*np.sum((db<0.5)*np.mod(db+x,2),axis=1)+np.log(q/(1-q))*np.sum((db>0.5)*np.mod(db+x,2),axis=1)
-    return unpackbits(np.argmin(dist),8)
+    return unpackbits(np.argmax(dist),8)
 
 def apply_MAP(db,x,MAP,p,q=0.07):
     result=np.zeros((len(x),8))
@@ -286,23 +286,23 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
                     X_ber=2.0*X_ber-1
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i])
-                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
                 X_ber=encoder_list[0].predict(y_ber)
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=apply_MAP(db_enc,X_ber,MAP,param_values[i])
-                ber_list[n+1,i]+=count_diff(y_pred,y_ber_bin,True,True)
+                ber_list[n+1,i]+=count_diff(y_pred,y_ber_bin,False,False)
             elif do_polar_MAP:
                 X_ber=np.mod(np.dot(y_ber_bin,G),2)
                 if noise_type=='AWGN':
                     X_ber=2.0*X_ber-1
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i])
-                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
             elif do_enc_MAP:
                 X_ber=encoder_list[0].predict(y_ber)
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=apply_MAP(db_enc,X_ber,MAP,param_values[i])
-                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,True,True)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
         r=points_per_value[i]%10**5
         if r !=0:
             ind=np.random.randint(256,size=r)
@@ -321,23 +321,23 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,do_polar_MAP=False
                     X_ber=2.0*X_ber-1
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i])
-                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
                 X_ber=np.round(encoder_list[0].predict(y_ber))
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=apply_MAP(db_enc,X_ber,MAP,param_values[i])
-                ber_list[n+1,i]+=count_diff(y_pred,y_ber_bin,False,True)
+                ber_list[n+1,i]+=count_diff(y_pred,y_ber_bin,False,False)
             elif do_polar_MAP:
                 X_ber=np.mod(np.dot(y_ber_bin,G),2)
                 if noise_type=='AWGN':
                     X_ber=2.0*X_ber-1
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i])
-                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
             elif do_enc_MAP:
                 X_ber=np.round(encoder_list[0].predict(y_ber))
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=apply_MAP(db_enc,X_ber,MAP,param_values[i])
-                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,True)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
         ber_list[:,i]/=points_per_value[i]*8
     if save_params:
         if params_name is None:
