@@ -268,23 +268,27 @@ def OHEncoder_test(hidden_size,use_BN=False,use_LN=False):
         enc=BatchNormalization()(enc)
     elif use_LN:
         enc=LayerNormalization()(enc)
-    enc_output=Dense(16)(enc)
-    enc_output=Lambda(lambda x : tf.tanh(2/3*x))(enc_output)
+    enc_output=Dense(16,activation='sigmoid')(enc)
     model=tf.keras.Model(inputs,enc_output)
     return model
 
 def OHDecoder_test(hidden_size,noise_layer,noise_param=None,use_BN=False,use_LN=False):
     inputs=tf.keras.Input(shape=(16,))
-    if noise_param is None:
-        noise=noise_layer()(inputs)
-    else:
-        noise=noise_layer(noise_param)(inputs)
-    dec=Dense(hidden_size)(noise)
+    dec=Dense(hidden_size)(inputs)
     dec=Mish()(dec)
     if use_BN:
         dec=BatchNormalization()(dec)
+        dec=Dense(hidden_size)(dec)
+        dec=Mish()(dec)
+        dec=BatchNormalization()(dec)
     elif use_LN:
         dec=LayerNormalization()(dec)
+        dec=Dense(hidden_size)(dec)
+        dec=Mish()(dec)
+        dec=LayerNormalization()(dec)
+    else:
+        dec=Dense(hidden_size)(dec)
+        dec=Mish()(dec)
     dec_output=Dense(256,activation='softmax')(dec)
     model=tf.keras.Model(inputs,dec_output)
     return model
@@ -292,8 +296,15 @@ def OHDecoder_test(hidden_size,noise_layer,noise_param=None,use_BN=False,use_LN=
 def OHAutoencoder_test(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=True,use_LN=False,lr=0.001):
     inputs=tf.keras.Input(shape=(256,))
     encoder=OHEncoder_test(hidden_size1,use_BN,use_LN)
-    decoder=OHDecoder_test(hidden_size2,noise_layer,noise_param,use_BN,use_LN)
-    autoencoder=tf.keras.Model(inputs,decoder(encoder(inputs)))
+    decoder=OHDecoder_test(hidden_size2,use_BN,use_LN)
+    if noise_param is None:
+        noise=noise_layer()
+    else:
+        noise=noise_layer(noise_param)
+    enc=encoder(inputs)
+    noisy=noise(enc)
+    outputs=decoder(noisy)
+    autoencoder=tf.keras.Model(inputs,outputs)
     autoencoder.compile(optimizer=Adam(lr),
               loss='categorical_crossentropy',
               metrics=[ber_metric_oh,'acc'])
