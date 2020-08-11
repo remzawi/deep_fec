@@ -2,8 +2,47 @@ import tensorflow as tf
 import numpy as np
 from tensorflow.keras.layers import ReLU,BatchNormalization,LayerNormalization,Dense,Input,Lambda
 from tensorflow.keras.optimizers import Adam
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
+import tensorflow_addons as tfa
+import tensorflow.keras.backend as K
+from tensorflow_addons.activations import mish
+from tensorflow_addons.optimizers import Lookahead, RectifiedAdam
+#tfa.options.TF_ADDONS_PY_OPS = True
 
+def get_centralized_gradients(optimizer, loss, params):
+    """Compute a list of centralized gradients.
+    
+    Modified version of tf.keras.optimizers.Optimizer.get_gradients:
+    https://github.com/keras-team/keras/blob/1931e2186843ad3ca2507a3b16cb09a7a3db5285/keras/optimizers.py#L88-L101
+    Reference:
+        https://arxiv.org/pdf/2004.01461.pdf
+    """
+    grads = []
+    for grad in K.gradients(loss, params):
+        rank = len(grad.shape)
+        if rank > 1:
+            grad -= tf.reduce_mean(grad, axis=list(range(rank-1)), keep_dims=True)
+        grads.append(grad)
+    if None in grads:
+        raise ValueError('An operation has `None` for gradient. '
+                         'Please make sure that all of your ops have a '
+                         'gradient defined (i.e. are differentiable). '
+                         'Common ops without gradient: '
+                         'K.argmax, K.round, K.eval.')
+    if hasattr(optimizer, 'clipnorm') and optimizer.clipnorm > 0:
+        norm = K.sqrt(sum([K.sum(K.square(g)) for g in grads]))
+        grads = [tf.keras.optimizers.clip_norm(g, optimizer.clipnorm, norm) for g in grads]
+    if hasattr(optimizer, 'clipvalue') and optimizer.clipvalue > 0:
+        grads = [K.clip(g, -optimizer.clipvalue, optimizer.clipvalue) for g in grads]
+    return grads
+
+def get_centralized_gradients_function(optimizer):
+    """Produce a get_centralized_gradients function for a particular optimizer instance."""
+
+    def get_centralized_gradients_for_instance(loss, params):
+        return get_centralized_gradients(optimizer, loss, params)
+
+    return get_centralized_gradients_for_instance
 
 def createDatasetOH(n):
     X_train=np.repeat(np.eye(256),n,axis=0)
@@ -41,7 +80,7 @@ class AWGN(tf.keras.layers.Layer):
         config = super(AWGN, self).get_config()
         config['snr']=self.snr
         return config
-    
+'''    
 class Mish(tf.keras.layers.Layer):
     def __init__(self,**kwargs):
         super(Mish,self).__init__(**kwargs)
@@ -50,7 +89,7 @@ class Mish(tf.keras.layers.Layer):
     def get_config(self):
         config = super(Mish, self).get_config()
         return config
-    
+'''    
 class multi_AWGN(tf.keras.layers.Layer):
     def __init__(self,**kwargs):
         super(multi_AWGN,self).__init__(**kwargs)
@@ -179,14 +218,14 @@ def OHDecoder_SEQ(hidden_size,noise_layer,noise_param):
               metrics=[ber_metric_oh,'acc'])
     return model
 
-def OHEncoder(hidden_size,use_BN=False,use_LN=False,act='tanh'):
+def OHEncoder(hidden_size,use_BN=False,use_LN=False,encoder_activation='tanh',hidden_activation='relu'):
     inputs=tf.keras.Input(shape=(256,))
-    enc=Dense(hidden_size,activation='relu')(inputs)
+    enc=Dense(hidden_size,activation=hidden_activation)(inputs)
     if use_BN:
         enc=BatchNormalization()(enc)
     elif use_LN:
         enc=LayerNormalization()(enc)
-    enc_output=Dense(16,activation=act)(enc)
+    enc_output=Dense(16,activation=encoder_activation)(enc)
     model=tf.keras.Model(inputs,enc_output)
     return model
 
@@ -232,9 +271,9 @@ def OHEncoder2(hidden_size,use_BN=False,use_LN=False,act='tanh'):
     model=tf.keras.Model(inputs,enc_output)
     return model
 
-def OHDecoder2(hidden_size,use_BN=False,use_LN=False):
+def OHDecoder2(hidden_size,use_BN=False,use_LN=False,hidden_activation='relu'):
     inputs=tf.keras.Input(shape=(16,))
-    dec=Dense(hidden_size,activation='relu')(inputs)
+    dec=Dense(hidden_size,activation=hidden_activation)(inputs)
     if use_BN:
         dec=BatchNormalization()(dec)
     elif use_LN:
@@ -243,10 +282,10 @@ def OHDecoder2(hidden_size,use_BN=False,use_LN=False):
     model=tf.keras.Model(inputs,dec_output)
     return model
 
-def OHAutoencoder2(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=True,use_LN=False,lr=0.001):
+def OHAutoencoder2(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=True,use_LN=False,lr=0.001,encoder_activation='sigmoid',hidden_activation='relu',optim=Adam,lookahead=False,gradient_centralization=False):
     inputs=tf.keras.Input(shape=(256,))
-    encoder=OHEncoder(hidden_size1,use_BN,use_LN,'sigmoid')
-    decoder=OHDecoder2(hidden_size2,use_BN,use_LN)
+    encoder=OHEncoder(hidden_size1,use_BN,use_LN,encoder_activation,hidden_activation)
+    decoder=OHDecoder2(hidden_size2,use_BN,use_LN,hidden_activation)
     if noise_param is None:
         noise=noise_layer()
     else:
@@ -255,9 +294,14 @@ def OHAutoencoder2(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN
     noisy=noise(enc)
     outputs=decoder(noisy)
     autoencoder=tf.keras.Model(inputs,outputs)
-    autoencoder.compile(optimizer=Adam(lr),
-              loss='categorical_crossentropy',
-              metrics=[ber_metric_oh,'acc'])
+    
+    if lookahead:
+        optim=tfa.optimizers.Lookahead(optim(lr))
+    if gradient_centralization:
+        optim.get_gradients=get_centralized_gradients_function(optim)
+    autoencoder.compile(optimizer=optim,
+               loss='categorical_crossentropy',
+               metrics=[ber_metric_oh,'acc'])
     return autoencoder,encoder,decoder
 
 def OHEncoder_test(hidden_size,use_BN=False,use_LN=False):
@@ -278,17 +322,8 @@ def OHDecoder_test(hidden_size,noise_layer,noise_param=None,use_BN=False,use_LN=
     dec=Mish()(dec)
     if use_BN:
         dec=BatchNormalization()(dec)
-        dec=Dense(hidden_size)(dec)
-        dec=Mish()(dec)
-        dec=BatchNormalization()(dec)
     elif use_LN:
         dec=LayerNormalization()(dec)
-        dec=Dense(hidden_size)(dec)
-        dec=Mish()(dec)
-        dec=LayerNormalization()(dec)
-    else:
-        dec=Dense(hidden_size)(dec)
-        dec=Mish()(dec)
     dec_output=Dense(256,activation='softmax')(dec)
     model=tf.keras.Model(inputs,dec_output)
     return model
