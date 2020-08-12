@@ -304,6 +304,27 @@ def OHAutoencoder2(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN
                metrics=[ber_metric_oh,'acc'])
     return autoencoder,encoder,decoder
 
+def recompile(encoder,decoder,noise_layer,noise_param=None,optim=Adam,lookahead=False,gradient_centralization=False,lr=0.001):
+    inputs=tf.keras.Input(shape=(256,))
+    if noise_param is None:
+        noise=noise_layer()
+    else:
+        noise=noise_layer(noise_param)
+    enc=encoder(inputs)
+    noisy=noise(enc)
+    outputs=decoder(noisy)
+    autoencoder=tf.keras.Model(inputs,outputs)
+    
+    if lookahead:
+        optim=tfa.optimizers.Lookahead(optim(lr))
+    if gradient_centralization:
+        optim.get_gradients=get_centralized_gradients_function(optim)
+    autoencoder.compile(optimizer=optim,
+               loss='categorical_crossentropy',
+               metrics=[ber_metric_oh,'acc'])
+    return autoencoder,encoder,decoder
+    
+
 def OHEncoder_test(hidden_size,use_BN=False,use_LN=False):
     inputs=tf.keras.Input(shape=(256,))
     enc=Dense(hidden_size)(inputs)

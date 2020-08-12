@@ -277,7 +277,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
             y_ber_bin=oh2bin(y_ber)
             noise_sample=noise(None,param_values[i],q=q_param,noise_only=True,noise_shape=(10**5,16))
             for j in range(n):
-                X_ber=encoder_list[j].predict(y_ber)
+                X_ber=np.round(encoder_list[j].predict(y_ber))
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=decoder_list[j].predict(X_ber)
                 ber_list[j,i]+=count_diff(y_pred,y_ber_bin,True,True)
@@ -289,7 +289,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
                 y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i],q_param)
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
                 for l in range(n_map):
-                    X_ber=encoder_list[enc_MAP_ind[l]].predict(y_ber)
+                    X_ber=np.round(encoder_list[enc_MAP_ind[l]].predict(y_ber))
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l+1,i]+=count_diff(y_pred,y_ber_bin,False,False)
@@ -302,7 +302,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
             elif n_map>0:
                 for l in range(n_map):
-                    X_ber=encoder_list[enc_MAP_ind[l]].predict(y_ber)
+                    X_ber=np.round(encoder_list[enc_MAP_ind[l]].predict(y_ber))
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l,i]+=count_diff(y_pred,y_ber_bin,False,False)
@@ -314,7 +314,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
             y_ber_bin=oh2bin(y_ber)
             noise_sample=noise(None,param_values[i],q=q_param,noise_only=True,noise_shape=(r,16))
             for j in range(n):
-                X_ber=encoder_list[j].predict(y_ber)
+                X_ber=np.round(encoder_list[j].predict(y_ber))
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=decoder_list[j].predict(X_ber)
                 ber_list[j,i]+=count_diff(y_pred,y_ber_bin,True,True)
@@ -326,7 +326,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
                 y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i],q_param)
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
                 for l in range(n_map):
-                    X_ber=encoder_list[enc_MAP_ind[l]].predict(y_ber)
+                    X_ber=np.round(encoder_list[enc_MAP_ind[l]].predict(y_ber))
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l+1,i]+=count_diff(y_pred,y_ber_bin,False,False)
@@ -339,7 +339,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
             elif n_map>0:
                 for l in range(n_map):
-                    X_ber=encoder_list[enc_MAP_ind[l]].predict(y_ber)
+                    X_ber=np.round(encoder_list[enc_MAP_ind[l]].predict(y_ber))
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l,i]+=count_diff(y_pred,y_ber_bin,False,False)
