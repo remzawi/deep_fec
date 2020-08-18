@@ -386,9 +386,11 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
                 plt.savefig('BERvsSNR.pdf')
         plt.show()
         
-def computeVarianceAWGN(encoder,do_polar=True,print_code=False):
+def computeVarianceAWGN(encoder,do_polar=True,print_code=False,round=True):
     u=np.eye(256)
     x=encoder.predict(u)
+    if round:
+        x=np.round(x)
     m=np.mean(x)
     v=np.var(x)
     print('Mean of the code: ',m)
@@ -403,7 +405,7 @@ def computeVarianceAWGN(encoder,do_polar=True,print_code=False):
     if print_code:
         print(x)
     
-def testLinearAWGN(encoder):
+def testLinearAWGN(encoder,round=True):
     ind=np.random.randint(256,size=2)
     u0=unpackbits(ind[0],8)
     u1=unpackbits(ind[1],8)
@@ -415,7 +417,10 @@ def testLinearAWGN(encoder):
     u[0]=bin2oh(u0)
     u[1]=bin2oh(u1)
     u[2]=bin2oh(u2)
-    x=(encoder.predict(u)+1)/2
+    x=encoder.predict(u)
+    if round:
+        x=np.round(x)
+    x=(x+1)/2
     print(x[0])
     print(x[1])
     print(x[2])

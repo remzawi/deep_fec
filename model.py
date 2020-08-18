@@ -47,6 +47,7 @@ def get_centralized_gradients_function(optimizer):
 def createDatasetOH(n):
     X_train=np.repeat(np.eye(256),n,axis=0)
     y_train=np.repeat(np.eye(256),n,axis=0)
+    return X_train,y_train
 
 def ber_metric(y_true,y_pred):
     y_pred=y_pred>0.5
@@ -194,7 +195,10 @@ class BAC_OH2(tf.keras.layers.Layer):
         if training:
             rounded=tf.math.round(tf.identity(input))
             mask1=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.07,tf.float32)
-            mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.float32)
+            if self.p < 1:
+                mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.float32)
+            else:
+                mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.005+0.35*np.random.rand(),tf.float32)
             mask1=mask1*rounded
             mask2=mask2*(1-rounded)
             mask=mask1+mask2
@@ -297,6 +301,8 @@ def OHAutoencoder2(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN
     
     if lookahead:
         optim=tfa.optimizers.Lookahead(optim(lr))
+    else:
+        optim=optim(lr)
     if gradient_centralization:
         optim.get_gradients=get_centralized_gradients_function(optim)
     autoencoder.compile(optimizer=optim,
@@ -378,3 +384,4 @@ def plot_history(history,to_plot=None,save=True,base_name=""): #if to_plot is No
         if save:
             plt.savefig(base_name+metric+'.eps')
     plt.show()
+
