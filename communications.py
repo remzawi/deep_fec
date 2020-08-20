@@ -386,7 +386,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
                 plt.savefig('BERvsSNR.pdf')
         plt.show()
         
-def computeVarianceAWGN(encoder,do_polar=True,print_code=False,round=True):
+def computeVarianceAWGN(encoder,do_polar=True,print_code=False,round=False):
     u=np.eye(256)
     x=encoder.predict(u)
     if round:

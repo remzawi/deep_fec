@@ -198,7 +198,17 @@ class BAC_OH2(tf.keras.layers.Layer):
             if self.p < 1:
                 mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.float32)
             else:
-                mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.005+0.35*np.random.rand(),tf.float32)
+                r=0.35*tf.random.uniform((tf.shape(input)[0],1))
+                mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<r,tf.float32)
+                #if r[0,0]<1/3:
+                #    print('0')
+                #    mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.01,tf.float32)
+                #elif r[0,0]<2/3:
+                #    print('1')
+                #    mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.15,tf.float32)
+                #else:
+                #    print('2')
+                #    mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.3,tf.float32)
             mask1=mask1*rounded
             mask2=mask2*(1-rounded)
             mask=mask1+mask2
@@ -371,6 +381,7 @@ def OHAutoencoder_test(hidden_size1,hidden_size2,noise_layer,noise_param=None,us
               loss='categorical_crossentropy',
               metrics=[ber_metric_oh,'acc'])
     return autoencoder,encoder,decoder
+
 
 def plot_history(history,to_plot=None,save=True,base_name=""): #if to_plot is None, plot everything, else only plot values in to_plot
     if to_plot is None:
