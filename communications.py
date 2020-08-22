@@ -20,6 +20,17 @@ def unpackbits(x, num_bits,to_array=False):
   mask = 2**np.arange(num_bits).reshape([1, num_bits])
   return (x & mask).astype(bool).astype(int).reshape(xshape + [num_bits])
 
+def AWGN_round(x):
+    p=(x>=0).astype(np.float32)
+    m=(x<0).astype(np.float32)
+    return p-m
+
+def correct(x,noise):
+    if noise=='AWGN':
+        return AWGN_round(x)
+    else:
+        return np.round(x)
+
 def createBitVectors():
     return oh2bin(np.eye(256))
 
@@ -255,7 +266,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
     if do_polar_MAP and n_map>0:
         ber_list=np.zeros((n+1+n_map,m))
         db_polar=createPolarCodewords()
-        db_enc=[np.round(encoder_list[ind].predict(np.eye(256))) for ind in enc_MAP_ind]
+        db_enc=[correct(encoder_list[ind].predict(np.eye(256)),noise_type) for ind in enc_MAP_ind]
         if noise_type=='AWGN':
             db_polar=2*db_polar-1
     elif do_polar_MAP:
@@ -265,7 +276,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
             db_polar=2*db_polar-1
     elif n_map>0:
         ber_list=np.zeros((n+n_map,m))
-        db_enc=[np.round(encoder_list[ind].predict(np.eye(256)))for ind in enc_MAP_ind]
+        db_enc=[correct(encoder_list[ind].predict(np.eye(256)),noise_type)for ind in enc_MAP_ind]
     else:
         ber_list=np.zeros((n,m))
     for i in tqdm(range(m)):
@@ -277,7 +288,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
             y_ber_bin=oh2bin(y_ber)
             noise_sample=noise(None,param_values[i],q=q_param,noise_only=True,noise_shape=(10**5,16))
             for j in range(n):
-                X_ber=np.round(encoder_list[j].predict(y_ber))
+                X_ber=correct(encoder_list[j].predict(y_ber),noise_type)
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=decoder_list[j].predict(X_ber)
                 ber_list[j,i]+=count_diff(y_pred,y_ber_bin,True,True)
@@ -289,7 +300,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
                 y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i],q_param)
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
                 for l in range(n_map):
-                    X_ber=np.round(encoder_list[enc_MAP_ind[l]].predict(y_ber))
+                    X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l+1,i]+=count_diff(y_pred,y_ber_bin,False,False)
@@ -302,7 +313,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
             elif n_map>0:
                 for l in range(n_map):
-                    X_ber=np.round(encoder_list[enc_MAP_ind[l]].predict(y_ber))
+                    X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l,i]+=count_diff(y_pred,y_ber_bin,False,False)
@@ -314,7 +325,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
             y_ber_bin=oh2bin(y_ber)
             noise_sample=noise(None,param_values[i],q=q_param,noise_only=True,noise_shape=(r,16))
             for j in range(n):
-                X_ber=np.round(encoder_list[j].predict(y_ber))
+                X_ber=correct(encoder_list[j].predict(y_ber),noise_type)
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=decoder_list[j].predict(X_ber)
                 ber_list[j,i]+=count_diff(y_pred,y_ber_bin,True,True)
@@ -326,7 +337,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
                 y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i],q_param)
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
                 for l in range(n_map):
-                    X_ber=np.round(encoder_list[enc_MAP_ind[l]].predict(y_ber))
+                    X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l+1,i]+=count_diff(y_pred,y_ber_bin,False,False)
@@ -339,7 +350,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
             elif n_map>0:
                 for l in range(n_map):
-                    X_ber=np.round(encoder_list[enc_MAP_ind[l]].predict(y_ber))
+                    X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l,i]+=count_diff(y_pred,y_ber_bin,False,False)
@@ -386,11 +397,11 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
                 plt.savefig('BERvsSNR.pdf')
         plt.show()
         
-def computeVarianceAWGN(encoder,do_polar=True,print_code=False,round=False):
+def computeVarianceAWGN(encoder,do_polar=True,print_code=False,round=True):
     u=np.eye(256)
     x=encoder.predict(u)
     if round:
-        x=np.round(x)
+        x=AWGN_round(x)
     m=np.mean(x)
     v=np.var(x)
     print('Mean of the code: ',m)

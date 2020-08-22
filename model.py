@@ -75,22 +75,21 @@ class AWGN(tf.keras.layers.Layer):
         self.sigma=np.sqrt(0.5)*10**(-snr/20)
     def call(self,input,training=None):
         if training:
-            return tf.identity(input)+tf.stop_gradient(tf.random.normal(tf.shape(input),stddev=self.sigma))
-        return tf.identity(input)
+            plus=tf.dtypes.cast(tf.identity(input)>=0,tf.float32)
+            minus=tf.dtypes.cast(tf.identity(input)<0,tf.float32)
+            rounded=plus-minus
+            return tf.identity(input)+tf.stop_gradient(rounded+tf.random.normal(tf.shape(input),stddev=self.sigma)-tf.identity(input))
+        else:
+            plus=tf.dtypes.cast(tf.identity(input)>=0,tf.float32)
+            minus=tf.dtypes.cast(tf.identity(input)<0,tf.float32)
+            rounded=plus-minus
+            return rounded
     def get_config(self):
         config = super(AWGN, self).get_config()
         config['snr']=self.snr
         return config
-'''    
-class Mish(tf.keras.layers.Layer):
-    def __init__(self,**kwargs):
-        super(Mish,self).__init__(**kwargs)
-    def call(self,input,training=None):
-        return input * tf.math.tanh(tf.math.softplus(input))
-    def get_config(self):
-        config = super(Mish, self).get_config()
-        return config
-'''    
+def AWGN_round(x):
+    return x>=0-x<0
 class multi_AWGN(tf.keras.layers.Layer):
     def __init__(self,**kwargs):
         super(multi_AWGN,self).__init__(**kwargs)
