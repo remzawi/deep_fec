@@ -50,8 +50,8 @@ def createDatasetOH(n):
     return X_train,y_train
 
 def ber_metric(y_true,y_pred):
-    y_pred=y_pred>0.5
-    return tf.math.count_nonzero(y_pred-y_true)/tf.math.reduce_prod(y_pred.shape)
+    rounded=tf.math.round(y_pred)
+    return tf.math.count_nonzero(tf.abs(y_pred-y_true)>0.1,dtype=tf.dtypes.float32)/y_true.shape[0]/8
 
 def unpackbits(x):
     xshape = list(x.shape)
@@ -325,11 +325,11 @@ def Decoder(hidden_sizes,use_BN=False,use_LN=False,hidden_activation='relu'):
             dec=BatchNormalization()(dec)
         if use_LN:
             dec=LayerNormalization()(dec)
-    dec_output=Dense(16,activation='sigmoid')(enc)
+    dec_output=Dense(8,activation='sigmoid')(dec)
     model=tf.keras.Model(inputs,dec_output)
     return model
 
-def Autoencoder(enc_type,dec_type,hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=True,use_LN=False,lr=0.001,encoder_activation='sigmoid',hidden_activation='relu',optim=Adam,lookahead=False,gradient_centralization=False)   
+def Autoencoder(enc_type,dec_type,hidden_size1,hidden_size2,noise_layer,noise_param=None, use_BN=True,use_LN=False,lr=0.001,encoder_activation='sigmoid',hidden_activation='relu', optim=Adam,lookahead=False,gradient_centralization=False):   
     if enc_type=='onehot':
         inputs=tf.keras.Input(shape=(256,))
         encoder=OHEncoder(hidden_size1,use_BN,use_LN,encoder_activation,hidden_activation)
@@ -362,7 +362,7 @@ def Autoencoder(enc_type,dec_type,hidden_size1,hidden_size2,noise_layer,noise_pa
     else:
         autoencoder.compile(optimizer=optim,
                 loss='binary_crossentropy',
-                metrics=[ber_metric_oh,'acc'])
+                metrics=[ber_metric,'acc'])
     return autoencoder,encoder,decoder
 
 
