@@ -90,6 +90,7 @@ class AWGN(tf.keras.layers.Layer):
         return config
 def AWGN_round(x):
     return x>=0-x<0
+
 class multi_AWGN(tf.keras.layers.Layer):
     def __init__(self,**kwargs):
         super(multi_AWGN,self).__init__(**kwargs)
@@ -115,24 +116,9 @@ class BSC(tf.keras.layers.Layer):
     def get_config(self):
         config = super(BSC, self).get_config()
         config['p']=self.p
-        return config
+        return config   
     
 class BSC_OH(tf.keras.layers.Layer):
-    def __init__(self,p,**kwargs):
-        super(BSC_OH,self).__init__(**kwargs)
-        self.p=p
-    def call(self,input,training=None):
-        if training:
-            rounded=tf.identity(input)>0.5
-            mask=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.uint8)
-            return tf.stop_gradient(tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.dtypes.cast(rounded,tf.uint8),mask),tf.float32)-tf.identity(input))+tf.identity(input)
-        return tf.identity(input)
-    def get_config(self):
-        config = super(BSC_OH, self).get_config()
-        config['p']=self.p
-        return config
-    
-class BSC_OH2(tf.keras.layers.Layer):
     def __init__(self,p,**kwargs):
         super(BSC_OH2,self).__init__(**kwargs)
         self.p=p
@@ -167,24 +153,6 @@ class BAC(tf.keras.layers.Layer):
         config['p']=self.p
         return config
     
-class BAC_OH(tf.keras.layers.Layer):
-    def __init__(self,p,**kwargs):
-        super(BAC_OH,self).__init__(**kwargs)
-        self.p=p
-    def call(self,input,training=None):
-        if training:
-            temp=tf.dtypes.cast(tf.identity(input)>0.5,tf.uint8)
-            mask1=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.07,tf.uint8)
-            mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<self.p,tf.uint8)
-            mask1=tf.dtypes.cast(mask1*temp,tf.uint8)
-            mask2=tf.dtypes.cast(mask2*(1-temp),tf.uint8)
-            mask=tf.bitwise.bitwise_xor(mask1,mask2)
-            return tf.stop_gradient(tf.dtypes.cast(tf.bitwise.bitwise_xor(tf.identity(temp),mask),tf.float32)-tf.identity(input))+tf.identity(input)
-        return tf.identity(input)
-    def get_config(self):
-        config = super(BAC_OH, self).get_config()
-        config['p']=self.p
-        return config
     
 class BAC_OH2(tf.keras.layers.Layer):
     def __init__(self,p,**kwargs):
@@ -199,15 +167,6 @@ class BAC_OH2(tf.keras.layers.Layer):
             else:
                 r=0.35*tf.random.uniform((tf.shape(input)[0],1))
                 mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<r,tf.float32)
-                #if r[0,0]<1/3:
-                #    print('0')
-                #    mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.01,tf.float32)
-                #elif r[0,0]<2/3:
-                #    print('1')
-                #    mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.15,tf.float32)
-                #else:
-                #    print('2')
-                #    mask2=tf.dtypes.cast(tf.random.uniform(tf.shape(input))<0.3,tf.float32)
             mask1=mask1*rounded
             mask2=mask2*(1-rounded)
             mask=mask1+mask2
@@ -338,36 +297,49 @@ def recompile(encoder,decoder,noise_layer,noise_param=None,optim=Adam,lookahead=
                loss='categorical_crossentropy',
                metrics=[ber_metric_oh,'acc'])
     return autoencoder,encoder,decoder
-    
 
-def OHEncoder_test(hidden_size,use_BN=False,use_LN=False):
-    inputs=tf.keras.Input(shape=(256,))
-    enc=Dense(hidden_size)(inputs)
-    enc=Mish()(enc)
-    if use_BN:
-        enc=BatchNormalization()(enc)
-    elif use_LN:
-        enc=LayerNormalization()(enc)
-    enc_output=Dense(16,activation='sigmoid')(enc)
+
+def Encoder(hidden_sizes,use_BN=False,use_LN=False,encoder_activation='tanh',hidden_activation='relu'):
+    inputs=tf.keras.Input(shape=(8,))
+    for i in range(len(hidden_sizes)):
+        if i==0:
+            enc=Dense(hidden_sizes[i],activation=hidden_activation)(inputs)
+        else:
+            enc=Dense(hidden_sizes[i],activation=hidden_activation)(enc)
+        if use_BN:
+            enc=BatchNormalization()(enc)
+        if use_LN:
+            enc=LayerNormalization()(enc)
+    enc_output=Dense(16,activation=encoder_activation)(enc)
     model=tf.keras.Model(inputs,enc_output)
     return model
 
-def OHDecoder_test(hidden_size,noise_layer,noise_param=None,use_BN=False,use_LN=False):
+def Decoder(hidden_sizes,use_BN=False,use_LN=False,hidden_activation='relu'):
     inputs=tf.keras.Input(shape=(16,))
-    dec=Dense(hidden_size)(inputs)
-    dec=Mish()(dec)
-    if use_BN:
-        dec=BatchNormalization()(dec)
-    elif use_LN:
-        dec=LayerNormalization()(dec)
-    dec_output=Dense(256,activation='softmax')(dec)
+    for i in range(len(hidden_sizes)):
+        if i==0:
+            dec=Dense(hidden_sizes[i],activation=hidden_activation)(inputs)
+        else:
+            dec=Dense(hidden_sizes[i],activation=hidden_activation)(dec)
+        if use_BN:
+            dec=BatchNormalization()(dec)
+        if use_LN:
+            dec=LayerNormalization()(dec)
+    dec_output=Dense(16,activation='sigmoid')(enc)
     model=tf.keras.Model(inputs,dec_output)
     return model
 
-def OHAutoencoder_test(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=True,use_LN=False,lr=0.001):
-    inputs=tf.keras.Input(shape=(256,))
-    encoder=OHEncoder_test(hidden_size1,use_BN,use_LN)
-    decoder=OHDecoder_test(hidden_size2,use_BN,use_LN)
+def Autoencoder(enc_type,dec_type,hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=True,use_LN=False,lr=0.001,encoder_activation='sigmoid',hidden_activation='relu',optim=Adam,lookahead=False,gradient_centralization=False)   
+    if enc_type=='onehot':
+        inputs=tf.keras.Input(shape=(256,))
+        encoder=OHEncoder(hidden_size1,use_BN,use_LN,encoder_activation,hidden_activation)
+    else:
+        inputs=tf.keras.Input(shape=(8,))
+        encoder=Encoder(hidden_size1,use_BN,use_LN,encoder_activation,hidden_activation)
+    if dec_type=='onehot':
+        decoder=OHDecoder2(hidden_size2,use_BN,use_LN,hidden_activation)
+    else:
+        decoder=Decoder(hidden_size2,use_BN,use_LN,hidden_activation)
     if noise_param is None:
         noise=noise_layer()
     else:
@@ -376,10 +348,23 @@ def OHAutoencoder_test(hidden_size1,hidden_size2,noise_layer,noise_param=None,us
     noisy=noise(enc)
     outputs=decoder(noisy)
     autoencoder=tf.keras.Model(inputs,outputs)
-    autoencoder.compile(optimizer=Adam(lr),
-              loss='categorical_crossentropy',
-              metrics=[ber_metric_oh,'acc'])
+    
+    if lookahead:
+        optim=tfa.optimizers.Lookahead(optim(lr))
+    else:
+        optim=optim(lr)
+    if gradient_centralization:
+        optim.get_gradients=get_centralized_gradients_function(optim)
+    if dec_type=='onehot':
+        autoencoder.compile(optimizer=optim,
+                loss='categorical_crossentropy',
+                metrics=[ber_metric_oh,'acc'])
+    else:
+        autoencoder.compile(optimizer=optim,
+                loss='binary_crossentropy',
+                metrics=[ber_metric_oh,'acc'])
     return autoencoder,encoder,decoder
+
 
 
 def plot_history(history,to_plot=None,save=True,base_name=""): #if to_plot is None, plot everything, else only plot values in to_plot
