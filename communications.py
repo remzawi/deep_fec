@@ -157,93 +157,7 @@ def apply_MAP(db,x,MAP,p,q=0.07):
     for i in range(len(x)):
         result[i]=MAP(db,x[i],p,q)
     return result
-
-
-def computePOLARBER(f,noise_type,param_values,one_hot=True,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**6]):
-    if noise_type == 'AWGN':
-        noise=awgn
-    elif noise_type == 'BAC':
-        noise=bac
-    elif noise_type == 'BSC':
-        noise=bsc
-    else:
-        raise ValueError('noise_type not one of (AWGN, BSC, BAC)')
-    if len(points_per_value)==1:
-        points_per_value=points_per_value*len(param_values)
-    ber_list=[]
-    for i in range(len(param_values)):
-        ind=np.random.randint(256,size=points_per_value[i])
-        y_ber=createBitVectors()[ind]
-        X_ber=np.mod(np.dot(y_ber,G),2).astype('float32')
-        X_ber=noise(X_ber,param_values[i])
-        y_pred=f(X_ber)
-        ber_list.append(BER(y_pred,y_ber,one_hot,True))
-    if save_params:
-        if params_name is None:
-            params_name='params.npy'
-        np.save(params_name,param_values)
-    if save_ber:
-        if ber_name is None:
-            ber_name='ber.npy'
-        np.save(ber_name,ber_list)
-    if plot_ber:
-        plt.figure()
-        plt.ylabel('BER')
-        plt.xlabel('Parameter')
-        plt.yscale('log')
-        plt.plot(param_values,ber_list)
-        plt.show()
-    
-def test_MAP(N,snr):
-    ind=np.random.randint(256,size=N)
-    y_ber=np.zeros((N,256))
-    y_ber[np.arange(N),ind]=1
-    y_ber_bin=oh2bin(y_ber)
-    X_ber=np.mod(np.dot(y_ber_bin,G),2)
-    noise_sample=awgn(None,snr,noise_only=True,noise_shape=(N,16))
-    X_ber=2*X_ber-1
-    X_ber=X_ber+noise_sample
-    y_pred=apply_MAP(loadDB(),X_ber,MAP_AWGN,snr)
-    print(BER(y_pred,y_ber_bin,one_hot=False,to_int=True))
-    
-def OHAutoencoderBER(encoder,decoder,noise_type,param_values,save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**6]):
-    if noise_type == 'AWGN':
-        noise=awgn
-    elif noise_type == 'BAC':
-        noise=bac
-    elif noise_type == 'BSC':
-        noise=bsc
-    else:
-        raise ValueError('noise_type not one of (AWGN, BSC, BAC)')
-    if len(points_per_value)==1:
-        points_per_value=points_per_value*len(param_values)
-    ber_list=[]
-    for i in range(len(param_values)):
-        ind=np.random.randint(256,size=points_per_value[i])
-        y_ber=np.zeros((points_per_value[i],256))
-        y_ber[np.arange(points_per_value[i]),ind]=1
-        X_ber=encoder.predict(y_ber)
-        X_ber=noise(X_ber,param_values[i])
-        y_pred=decoder.predict(X_ber)
-        y_ber=oh2bin(y_ber)
-        ber_list.append(BER(y_pred,y_ber,True,True))
-    if save_params:
-        if params_name is None:
-            params_name='params.npy'
-        np.save(params_name,param_values)
-    if save_ber:
-        if ber_name is None:
-            ber_name='ber.npy'
-        np.save(ber_name,ber_list)
-    if plot_ber:
-        plt.figure()
-        plt.ylabel('BER')
-        plt.xlabel('Parameter')
-        plt.yscale('log')
-        plt.plot(param_values,ber_list)
-        plt.show()
-        
-        
+                  
 def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_polar_MAP=False,enc_MAP_ind=[],save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**5],plot_legend=None,save_fig=False,fig_name=None):
     n=len(encoder_list)
     m=len(param_values)
@@ -396,6 +310,190 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
             else:
                 plt.savefig('BERvsSNR.pdf')
         plt.show()
+
+
+def computeBER(encoder_list,decoder_list,enc_types,dec_types,noise_type,param_values,q_param=0.07,do_polar_MAP=False,enc_MAP_ind=[],save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**5],plot_legend=None,save_fig=False,fig_name=None):
+    n=len(encoder_list)
+    m=len(param_values)
+    n_map=len(enc_MAP_ind)
+    if n != len(decoder_list):
+        raise ValueError('missing encoder or decoder')
+    if noise_type == 'AWGN':
+        noise=awgn
+        MAP=MAP_AWGN
+    elif noise_type == 'BAC':
+        noise=bac
+        MAP=MAP_BAC
+    elif noise_type == 'BSC':
+        noise=bsc
+        MAP=MAP_BSC
+    else:
+        raise ValueError('noise_type not one of (AWGN, BSC, BAC)')
+    if len(points_per_value)==1:
+        points_per_value=points_per_value*m
+    if do_polar_MAP and n_map>0:
+        ber_list=np.zeros((n+1+n_map,m))
+        db_polar=createPolarCodewords()
+        db_enc=[]
+        vectors=createBitVectors()
+        for ind in enc_MAP_ind:
+            if enc_types[ind]=='onehot':
+                db_enc.append(correct(encoder_list[ind].predict(np.eye(256)),noise_type))
+            else:
+                db_enc.append(correct(encoder_list[ind].predict(vectors),noise_type))
+        if noise_type=='AWGN':
+            db_polar=2*db_polar-1
+    elif do_polar_MAP:
+        ber_list=np.zeros((n+1,m))
+        db_polar=createPolarCodewords()
+        if noise_type=='AWGN':
+            db_polar=2*db_polar-1
+    elif n_map>0:
+        ber_list=np.zeros((n+n_map,m))
+        db_enc=[]
+        vectors=createBitVectors()
+        for ind in enc_MAP_ind:
+            if enc_types[ind]=='onehot':
+                db_enc.append(correct(encoder_list[ind].predict(np.eye(256)),noise_type))
+            else:
+                db_enc.append(correct(encoder_list[ind].predict(vectors),noise_type))
+    else:
+        ber_list=np.zeros((n,m))
+    for i in tqdm(range(m)):
+        n_pass=points_per_value[i]//10**5
+        for k in range(n_pass):        
+            ind=np.random.randint(256,size=10**5)
+            y_ber=np.zeros((10**5,256))
+            y_ber[np.arange(10**5),ind]=1
+            y_ber_bin=oh2bin(y_ber)
+            noise_sample=noise(None,param_values[i],q=q_param,noise_only=True,noise_shape=(10**5,16))
+            for j in range(n):
+                if enc_types[j]=='onehot':
+                    X_ber=correct(encoder_list[j].predict(y_ber),noise_type)
+                else:
+                    X_ber=correct(encoder_list[j].predict(y_ber_bin),noise_type)
+                X_ber=noise(X_ber,apply_noise=noise_sample)
+                y_pred=decoder_list[j].predict(X_ber)
+                ber_list[j,i]+=count_diff(y_pred,y_ber_bin,dec_types[j]=='onehot',True)
+            if do_polar_MAP and n_map>0:
+                X_ber=np.mod(np.dot(y_ber_bin,G),2)
+                if noise_type=='AWGN':
+                    X_ber=2.0*X_ber-1
+                X_ber=noise(X_ber,apply_noise=noise_sample)
+                y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i],q_param)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
+                for l in range(n_map):
+                    if enc_types[enc_MAP_ind[l]]=='onehot':
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
+                    else:
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type)
+                    X_ber=noise(X_ber,apply_noise=noise_sample)
+                    y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
+                    ber_list[n+l+1,i]+=count_diff(y_pred,y_ber_bin,False,False)
+            elif do_polar_MAP:
+                X_ber=np.mod(np.dot(y_ber_bin,G),2)
+                if noise_type=='AWGN':
+                    X_ber=2.0*X_ber-1
+                X_ber=noise(X_ber,apply_noise=noise_sample)
+                y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i],q_param)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
+            elif n_map>0:
+                for l in range(n_map):
+                    if enc_types[enc_MAP_ind[l]]=='onehot':
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
+                    else:
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type)
+                    X_ber=noise(X_ber,apply_noise=noise_sample)
+                    y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
+                    ber_list[n+l,i]+=count_diff(y_pred,y_ber_bin,False,False)
+        r=points_per_value[i]%10**5
+        if r !=0:
+            ind=np.random.randint(256,size=r)
+            y_ber=np.zeros((r,256))
+            y_ber[np.arange(r),ind]=1
+            y_ber_bin=oh2bin(y_ber)
+            noise_sample=noise(None,param_values[i],q=q_param,noise_only=True,noise_shape=(r,16))
+            for j in range(n):
+                if enc_types[j]=='onehot':
+                    X_ber=correct(encoder_list[j].predict(y_ber),noise_type)
+                else:
+                    X_ber=correct(encoder_list[j].predict(y_ber_bin),noise_type)
+                X_ber=noise(X_ber,apply_noise=noise_sample)
+                y_pred=decoder_list[j].predict(X_ber)
+                ber_list[j,i]+=count_diff(y_pred,y_ber_bin,dec_types[j]=='onehot',True)
+            if do_polar_MAP and n_map>0:
+                X_ber=np.mod(np.dot(y_ber_bin,G),2)
+                if noise_type=='AWGN':
+                    X_ber=2.0*X_ber-1
+                X_ber=noise(X_ber,apply_noise=noise_sample)
+                y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i],q_param)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
+                for l in range(n_map):
+                    if enc_types[enc_MAP_ind[l]]=='onehot':
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
+                    else:
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type)
+                    X_ber=noise(X_ber,apply_noise=noise_sample)
+                    y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
+                    ber_list[n+l+1,i]+=count_diff(y_pred,y_ber_bin,False,False)
+            elif do_polar_MAP:
+                X_ber=np.mod(np.dot(y_ber_bin,G),2)
+                if noise_type=='AWGN':
+                    X_ber=2.0*X_ber-1
+                X_ber=noise(X_ber,apply_noise=noise_sample)
+                y_pred=apply_MAP(db_polar,X_ber,MAP,param_values[i],q_param)
+                ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
+            elif n_map>0:
+                for l in range(n_map):
+                    if enc_types[enc_MAP_ind[l]]=='onehot':
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
+                    else:
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type)
+                    X_ber=noise(X_ber,apply_noise=noise_sample)
+                    y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
+                    ber_list[n+l,i]+=count_diff(y_pred,y_ber_bin,False,False)
+        ber_list[:,i]/=points_per_value[i]*8
+    if save_params:
+        if params_name is None:
+            params_name='params.npy'
+            np.save(params_name,param_values)
+        elif len(params_name)==1:
+            np.save(params_name[0],param_values)
+        elif len(params_name)==len(ber_list):
+            for i in range(len(ber_list)):
+                np.save(params_name[i],param_values)
+        else:
+            print("Incorrect parameters name, saving to params.py")
+            params_name='params.npy'
+            np.save(params_name,param_values)
+    if save_ber:
+        if ber_name is None:
+            ber_name='ber.npy'
+            np.save(ber_name,ber_list)
+        elif len(ber_name)==1:
+            np.save(ber_name[0],ber_list)
+        elif len(ber_name)==len(ber_list):
+            for i in range(len(ber_name)):
+                np.save(ber_name[i],ber_list[i])
+        else:
+            print("Incorrect ber name, saving to ber.py")
+            ber_name='ber.py'
+            np.save(ber_name,ber_list)
+    if plot_ber:
+        plt.figure()
+        plt.ylabel('BER')
+        plt.xlabel('Parameter')
+        plt.yscale('log')
+        for i in range(len(ber_list)):
+            plt.plot(param_values,ber_list[i])
+        if plot_legend is not None:
+            plt.legend(plot_legend)
+        if save_fig:
+            if fig_name is not None:
+                plt.savefig(fig_name)
+            else:
+                plt.savefig('BERvsSNR.pdf')
+        plt.show()
         
 def computeVarianceAWGN(encoder,do_polar=True,print_code=False,round=True):
     u=np.eye(256)
@@ -440,6 +538,3 @@ def testLinearAWGN(encoder,round=True):
     else:
         print('The code is linear')
     
-
-#test_MAP(10000,2)
-
