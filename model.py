@@ -51,7 +51,7 @@ def createDatasetOH(n):
 
 def ber_metric(y_true,y_pred):
     rounded=tf.math.round(y_pred)
-    return tf.math.count_nonzero(tf.abs(y_pred-y_true)>0.1,dtype=tf.dtypes.float32)/y_true.shape[0]/8
+    return tf.math.count_nonzero(tf.abs(rounded-y_true)>0.1,dtype=tf.dtypes.float32)/y_true.shape[0]/8
 
 def unpackbits(x):
     xshape = list(x.shape)
