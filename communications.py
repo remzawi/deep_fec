@@ -25,7 +25,9 @@ def AWGN_round(x):
     m=(x<0).astype(np.float32)
     return p-m
 
-def correct(x,noise):
+def correct(x,noise,active=True):
+    if not active:
+        return x
     if noise=='AWGN':
         return AWGN_round(x)
     else:
@@ -312,7 +314,7 @@ def multBER(encoder_list,decoder_list,noise_type,param_values,q_param=0.07,do_po
         plt.show()
 
 
-def computeBER(encoder_list,decoder_list,enc_types,dec_types,noise_type,param_values,q_param=0.07,do_polar_MAP=False,enc_MAP_ind=[],save_params=True,params_name=None,save_ber=True,ber_name=None,plot_ber=True,points_per_value=[10**5],plot_legend=None,save_fig=False,fig_name=None):
+def computeBER(encoder_list, decoder_list, enc_types, dec_types, noise_type, param_values, q_param=0.07, do_polar_MAP=False, enc_MAP_ind=[], save_params=True, params_name=None, save_ber=True, ber_name=None, plot_ber=True, points_per_value=[10**5], plot_legend=None, save_fig=False, fig_name=None,correct_output=False):
     n=len(encoder_list)
     m=len(param_values)
     n_map=len(enc_MAP_ind)
@@ -338,9 +340,9 @@ def computeBER(encoder_list,decoder_list,enc_types,dec_types,noise_type,param_va
         vectors=createBitVectors()
         for ind in enc_MAP_ind:
             if enc_types[ind]=='onehot':
-                db_enc.append(correct(encoder_list[ind].predict(np.eye(256)),noise_type))
+                db_enc.append(correct(encoder_list[ind].predict(np.eye(256)),noise_type,correct_output))
             else:
-                db_enc.append(correct(encoder_list[ind].predict(vectors),noise_type))
+                db_enc.append(correct(encoder_list[ind].predict(vectors),noise_type,correct_output))
         if noise_type=='AWGN':
             db_polar=2*db_polar-1
     elif do_polar_MAP:
@@ -354,9 +356,9 @@ def computeBER(encoder_list,decoder_list,enc_types,dec_types,noise_type,param_va
         vectors=createBitVectors()
         for ind in enc_MAP_ind:
             if enc_types[ind]=='onehot':
-                db_enc.append(correct(encoder_list[ind].predict(np.eye(256)),noise_type))
+                db_enc.append(correct(encoder_list[ind].predict(np.eye(256)),noise_type,correct_output))
             else:
-                db_enc.append(correct(encoder_list[ind].predict(vectors),noise_type))
+                db_enc.append(correct(encoder_list[ind].predict(vectors),noise_type,correct_output))
     else:
         ber_list=np.zeros((n,m))
     for i in tqdm(range(m)):
@@ -369,9 +371,9 @@ def computeBER(encoder_list,decoder_list,enc_types,dec_types,noise_type,param_va
             noise_sample=noise(None,param_values[i],q=q_param,noise_only=True,noise_shape=(10**5,16))
             for j in range(n):
                 if enc_types[j]=='onehot':
-                    X_ber=correct(encoder_list[j].predict(y_ber),noise_type)
+                    X_ber=correct(encoder_list[j].predict(y_ber),noise_type,correct_output)
                 else:
-                    X_ber=correct(encoder_list[j].predict(y_ber_bin),noise_type)
+                    X_ber=correct(encoder_list[j].predict(y_ber_bin),noise_type,correct_output)
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=decoder_list[j].predict(X_ber)
                 ber_list[j,i]+=count_diff(y_pred,y_ber_bin,dec_types[j]=='onehot',True)
@@ -384,9 +386,9 @@ def computeBER(encoder_list,decoder_list,enc_types,dec_types,noise_type,param_va
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
                 for l in range(n_map):
                     if enc_types[enc_MAP_ind[l]]=='onehot':
-                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type,correct_output)
                     else:
-                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type)
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type,correct_output)
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l+1,i]+=count_diff(y_pred,y_ber_bin,False,False)
@@ -400,9 +402,9 @@ def computeBER(encoder_list,decoder_list,enc_types,dec_types,noise_type,param_va
             elif n_map>0:
                 for l in range(n_map):
                     if enc_types[enc_MAP_ind[l]]=='onehot':
-                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type,correct_output)
                     else:
-                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type)
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type,correct_output)
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l,i]+=count_diff(y_pred,y_ber_bin,False,False)
@@ -415,9 +417,9 @@ def computeBER(encoder_list,decoder_list,enc_types,dec_types,noise_type,param_va
             noise_sample=noise(None,param_values[i],q=q_param,noise_only=True,noise_shape=(r,16))
             for j in range(n):
                 if enc_types[j]=='onehot':
-                    X_ber=correct(encoder_list[j].predict(y_ber),noise_type)
+                    X_ber=correct(encoder_list[j].predict(y_ber),noise_type,correct_output)
                 else:
-                    X_ber=correct(encoder_list[j].predict(y_ber_bin),noise_type)
+                    X_ber=correct(encoder_list[j].predict(y_ber_bin),noise_type,correct_output)
                 X_ber=noise(X_ber,apply_noise=noise_sample)
                 y_pred=decoder_list[j].predict(X_ber)
                 ber_list[j,i]+=count_diff(y_pred,y_ber_bin,dec_types[j]=='onehot',True)
@@ -430,9 +432,9 @@ def computeBER(encoder_list,decoder_list,enc_types,dec_types,noise_type,param_va
                 ber_list[n,i]+=count_diff(y_pred,y_ber_bin,False,False)
                 for l in range(n_map):
                     if enc_types[enc_MAP_ind[l]]=='onehot':
-                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type,correct_output)
                     else:
-                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type)
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type,correct_output)
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l+1,i]+=count_diff(y_pred,y_ber_bin,False,False)
@@ -446,9 +448,9 @@ def computeBER(encoder_list,decoder_list,enc_types,dec_types,noise_type,param_va
             elif n_map>0:
                 for l in range(n_map):
                     if enc_types[enc_MAP_ind[l]]=='onehot':
-                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type)
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber),noise_type,correct_output)
                     else:
-                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type)
+                        X_ber=correct(encoder_list[enc_MAP_ind[l]].predict(y_ber_bin),noise_type,correct_output)
                     X_ber=noise(X_ber,apply_noise=noise_sample)
                     y_pred=apply_MAP(db_enc[l],X_ber,MAP,param_values[i],q_param)
                     ber_list[n+l,i]+=count_diff(y_pred,y_ber_bin,False,False)
