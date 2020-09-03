@@ -8,7 +8,6 @@ import tensorflow.keras.backend as K
 from tensorflow_addons.activations import mish
 from tensorflow_addons.optimizers import Lookahead, RectifiedAdam
 from tensorflow_addons.layers import WeightNormalization
-#tfa.options.TF_ADDONS_PY_OPS = True
 
 def get_centralized_gradients(optimizer, loss, params):
     """Compute a list of centralized gradients.
@@ -95,19 +94,6 @@ class AWGN(tf.keras.layers.Layer):
         return config
 def AWGN_round(x):
     return x>=0-x<0
-
-class multi_AWGN(tf.keras.layers.Layer):
-    def __init__(self,**kwargs):
-        super(multi_AWGN,self).__init__(**kwargs)
-    def call(self,input,training=None):
-        if training:
-            snr=2*np.random.rand()
-            sigma=np.sqrt(0.5)*10**(-snr/20)
-            return tf.identity(input)+tf.random.normal(tf.shape(input),stddev=sigma)
-        return tf.identity(input)
-    def get_config(self):
-        config = super(multi_AWGN, self).get_config()
-        return config 
     
 class BSC(tf.keras.layers.Layer):
     def __init__(self,p,**kwargs):
@@ -159,7 +145,7 @@ class BAC(tf.keras.layers.Layer):
         return config
     
     
-class BAC_OH2(tf.keras.layers.Layer):
+class BAC_OH(tf.keras.layers.Layer):
     def __init__(self,p,**kwargs):
         super(BAC_OH2,self).__init__(**kwargs)
         self.p=p
@@ -189,33 +175,29 @@ class normLayer(tf.keras.layers.Layer):
     def __init__(self,**kwargs):
         super(normLayer,self).__init__(**kwargs)
     def call(self,input,training=None):
-        #mean=tf.math.reduce_mean(tf.identity(input),0)
-        #centered=tf.identity(input)-mean
-        #var=tf.math.reduce_mean(tf.identity(input)**2,0,keepdims=True)
-        #return centered/variance
-        mean,variance=tf.nn.moments(tf.identity(input),[0,1],keepdims=True)
+        mean,variance=tf.nn.moments(tf.identity(input),[0,1])
         return (tf.identity(input)-mean)/tf.math.sqrt(tf.math.maximum(1e-8,variance))
-        #mean=tf.reduce_sum(tf.identity(input),0)/tf.dtypes.cast(tf.shape(input)[0],tf.dtypes.float32)
-        #centered=tf.identity(input)-mean
-        #maxnorm=tf.math.maximum(tf.math.reduce_max(tf.abs(centered)),1e-8)
-
-#        normalized=centered/maxnorm
- #       variance=tf.math.maximum(tf.math.reduce_sum(centered**2)/tf.dtypes.cast(tf.shape(input)[0],tf.dtypes.float32)/tf.dtypes.cast(tf.shape(input)[1],tf.dtypes.float32),1e-8)
-        return centered/maxnorm
     def get_config(self):
         config = super(normLayer, self).get_config()
         return config   
+    
+    
+class pseudoNorm(tf.keras.layers.Layer):
+    def __init__(self,**kwargs):
+        super(pseudoNorm,self).__init__(**kwargs)
+    def call(self,input,training=None):
+        mean=tf.math.reduce_mean(tf.identity(input))
+        centered=tf.identity(input)-mean
+        norm=tf.math.reduce_max(tf.math.abs(centered))
+        return centered/norm
+    def get_config(self):
+        config = super(pseudoNorm, self).get_config()
+        return config   
+
 class forceNorm(tf.keras.layers.Layer):
     def __init__(self,**kwargs):
         super(forceNorm,self).__init__(**kwargs)
     def call(self,input,training=None):
-        #mean=tf.math.reduce_mean(tf.identity(input),0)
-        #centered=tf.identity(input)-mean
-        #var=tf.math.reduce_mean(tf.identity(input)**2,0,keepdims=True)
-        #return centered/variance
-        #mean,variance=tf.nn.moments(tf.identity(input),[0],keepdims=True)
-        #return (tf.identity(input)-mean)/(variance+1e-15)
-        #mean=tf.reduce_sum(tf.identity(input),0)/tf.dtypes.cast(tf.shape(input)[0],tf.dtypes.float32)
         mean=tf.math.reduce_mean(tf.identity(input))
         centered=tf.identity(input)-mean
         p=tf.dtypes.cast(centered>=0,tf.dtypes.float32)
@@ -224,6 +206,16 @@ class forceNorm(tf.keras.layers.Layer):
     def get_config(self):
         config = super(forceNorm, self).get_config()
         return config       
+
+    
+class cTanh(tf.keras.layers.Layer):
+    def __init__(self,**kwargs):
+        super(cTanh,self).__init__(**kwargs)
+    def call(self,input,training=None):
+        return 1.67*tf.math.tanh(2/3*tf.identity(input))
+    def get_config(self):
+        config = super(cTanh, self).get_config()
+        return config   
     
 def OHDecoder_SEQ(hidden_size,noise_layer,noise_param):
     model=tf.keras.Sequential()
@@ -236,7 +228,7 @@ def OHDecoder_SEQ(hidden_size,noise_layer,noise_param):
               metrics=[ber_metric_oh,'acc'])
     return model
 
-def OHEncoder(hidden_size, use_BN=False, use_LN=False, use_WN=False, encoder_activation='tanh', hidden_activation='relu', layer_normalization=False, force_normalization=False, enc_kernel_reg=None, enc_activity_reg=None):
+def OHEncoder(hidden_size, use_BN=False, use_LN=False, use_WN=False, encoder_activation='tanh', hidden_activation='relu', layer_normalization=False, force_normalization=False, pseudo_normalization=False, enc_kernel_reg=None, enc_activity_reg=None, additional_layer=None):
     inputs=tf.keras.Input(shape=(256,))
     if use_WN:
         enc=WeightNormalization(Dense(hidden_size,activation=hidden_activation))(inputs)
@@ -246,57 +238,20 @@ def OHEncoder(hidden_size, use_BN=False, use_LN=False, use_WN=False, encoder_act
         enc=BatchNormalization()(enc)
     elif use_LN:
         enc=LayerNormalization()(enc)
-    enc_output=Dense(16, activation=encoder_activation, kernel_regularizer=enc_kernel_reg, activity_regularizer=enc_activity_reg)(enc)
+    
+    enc=Dense(16, activation=encoder_activation, kernel_regularizer=enc_kernel_reg, activity_regularizer=enc_activity_reg)(enc)
+    if additional_layer is not None:
+        enc=additional_layer()(enc)
     if layer_normalization:
-        enc_output=normLayer()(enc_output)
+        enc=normLayer()(enc)
     if force_normalization:
-        enc_output=forceNorm()(enc_output)
-    model=tf.keras.Model(inputs,enc_output)
+        enc=forceNorm()(enc)
+    if pseudo_normalization:
+        enc=pseudoNorm()(enc)
+    model=tf.keras.Model(inputs,enc)
     return model
 
-def OHDecoder(hidden_size,noise_layer,noise_param=None,use_BN=False,use_LN=False):
-    inputs=tf.keras.Input(shape=(16,))
-    if noise_param is None:
-        noise=noise_layer()(inputs)
-    else:
-        noise=noise_layer(noise_param)(inputs)
-    dec=Dense(hidden_size,activation='relu')(noise)
-    if use_BN:
-        dec=BatchNormalization()(dec)
-    elif use_LN:
-        dec=LayerNormalization()(dec)
-    dec_output=Dense(256,activation='softmax')(dec)
-    model=tf.keras.Model(inputs,dec_output)
-    return model
-
-def OHAutoencoder(hidden_size1,hidden_size2,noise_layer,noise_param=None,use_BN=True,use_LN=False,lr=0.001):
-    inputs=tf.keras.Input(shape=(256,))
-    encoder=OHEncoder(hidden_size1,use_BN,use_LN)
-    decoder=OHDecoder(hidden_size2,noise_layer,noise_param,use_BN,use_LN)
-    autoencoder=tf.keras.Model(inputs,decoder(encoder(inputs)))
-    autoencoder.compile(optimizer=Adam(lr),
-              loss='categorical_crossentropy',
-              metrics=[ber_metric_oh,'acc'])
-    return autoencoder,encoder,decoder
-
-def OHEncoder2(hidden_size,use_BN=False,use_LN=False,act='tanh'):
-    inputs=tf.keras.Input(shape=(256,))
-    enc=Dense(hidden_size,activation='relu')(inputs)
-    if use_BN:
-        enc=BatchNormalization()(enc)
-        enc=Dense(hidden_size,activation='relu')(enc)
-        enc=BatchNormalization()(enc)
-    elif use_LN:
-        enc=LayerNormalization()(enc)
-        enc=Dense(hidden_size,activation='relu')(enc)
-        enc=LayerNormalization()(enc)
-    else:
-        enc=Dense(hidden_size,activation='relu')(enc)
-    enc_output=Dense(16,activation=act)(enc)
-    model=tf.keras.Model(inputs,enc_output)
-    return model
-
-def OHDecoder2(hidden_size,use_BN=False,use_LN=False,use_WN=False,hidden_activation='relu'):
+def OHDecoder(hidden_size,use_BN=False,use_LN=False,use_WN=False,hidden_activation='relu'):
     inputs=tf.keras.Input(shape=(16,))
     if use_WN:
         dec=WeightNormalization(Dense(hidden_size,activation=hidden_activation))(inputs)
@@ -310,34 +265,7 @@ def OHDecoder2(hidden_size,use_BN=False,use_LN=False,use_WN=False,hidden_activat
     model=tf.keras.Model(inputs,dec_output)
     return model
 
-def OHAutoencoder2(hidden_size1, hidden_size2, noise_layer, noise_param=None, use_BN=True, use_LN=False, lr=0.001, encoder_activation='sigmoid', hidden_activation='relu', optim=Adam, lookahead=False, gradient_centralization=False):
-    inputs=tf.keras.Input(shape=(256,))
-    encoder=OHEncoder(hidden_size1,use_BN,use_LN,encoder_activation,hidden_activation)
-    decoder=OHDecoder2(hidden_size2,use_BN,use_LN,hidden_activation)
-    if noise_param is None:
-        noise=noise_layer()
-    else:
-        noise=noise_layer(noise_param)
-    enc=encoder(inputs)
-    noisy=noise(enc)
-    outputs=decoder(noisy)
-    autoencoder=tf.keras.Model(inputs,outputs)
-    
-    if lookahead:
-        optim=tfa.optimizers.Lookahead(optim(lr))
-    else:
-        optim=optim(lr)
-    if gradient_centralization:
-        optim.get_gradients=get_centralized_gradients_function(optim)
-    autoencoder.compile(optimizer=optim,
-               loss='categorical_crossentropy',
-               metrics=[ber_metric_oh,'acc'])
-    return autoencoder,encoder,decoder
-
-
-
-
-def Encoder(hidden_sizes, use_BN=False, use_LN=False, use_WN=False, encoder_activation='tanh', hidden_activation='relu', layer_normalization=False, force_normalization=False, enc_kernel_reg=None, enc_activity_reg=None):
+def Encoder(hidden_sizes, use_BN=False, use_LN=False, use_WN=False, encoder_activation='tanh', hidden_activation='relu', layer_normalization=False, force_normalization=False, pseudo_normalization=False, enc_kernel_reg=None, enc_activity_reg=None, additional_layer=None):
     inputs=tf.keras.Input(shape=(8,))
     if use_WN:
         for i in range(len(hidden_sizes)):
@@ -359,12 +287,17 @@ def Encoder(hidden_sizes, use_BN=False, use_LN=False, use_WN=False, encoder_acti
                 enc=BatchNormalization()(enc)
             if use_LN:
                 enc=LayerNormalization()(enc)
-    enc_output=Dense(16, activation=encoder_activation, kernel_regularizer=enc_kernel_reg, activity_regularizer=enc_activity_reg)(enc)
+    
+    enc=Dense(16, activation=encoder_activation, kernel_regularizer=enc_kernel_reg, activity_regularizer=enc_activity_reg)(enc)
+    if additional_layer is not None:
+        enc=additional_layer()(enc)
     if layer_normalization:
-        enc_output=normLayer()(enc_output)
+        enc=normLayer()(enc)
     if force_normalization:
-        enc_output=forceNorm()(enc_output)
-    model=tf.keras.Model(inputs,enc_output)
+        enc=forceNorm()(enc)
+    if pseudo_normalization:
+        enc=pseudoNorm()(enc)
+    model=tf.keras.Model(inputs,enc)
     return model
 
 def Decoder(hidden_sizes,use_BN=False,use_LN=False,use_WN=False,hidden_activation='relu'):
@@ -389,19 +322,19 @@ def Decoder(hidden_sizes,use_BN=False,use_LN=False,use_WN=False,hidden_activatio
                 dec=BatchNormalization()(dec)
             if use_LN:
                 dec=LayerNormalization()(dec)
-    dec_output=Dense(8,activation='sigmoid')(dec)
-    model=tf.keras.Model(inputs,dec_output)
+    dec=Dense(8,activation='sigmoid')(dec)
+    model=tf.keras.Model(inputs,dec)
     return model
 
-def Autoencoder(enc_type, dec_type, hidden_size1, hidden_size2, noise_layer, noise_param=None, use_BN=True, use_LN=False, use_WN=False, lr=0.001, encoder_activation='sigmoid', hidden_activation='relu', optim=Adam, lookahead=False, gradient_centralization=False, layer_normalization=False, force_normalization=False, compile_autoencoder=True, compile_encoder=False, compile_decoder=False, enc_kernel_reg=None, enc_activity_reg=None):   
+def Autoencoder(enc_type, dec_type, hidden_size1, hidden_size2, noise_layer, noise_param=None, use_BN=True, use_LN=False, use_WN=False, lr=0.001, encoder_activation='sigmoid', hidden_activation='relu', optim=Adam, lookahead=False, gradient_centralization=False, layer_normalization=False, force_normalization=False, pseudo_normalization=False, compile_autoencoder=True, compile_encoder=False, compile_decoder=False, enc_kernel_reg=None, enc_activity_reg=None, additional_layer=None):   
     if enc_type=='onehot':
         inputs=tf.keras.Input(shape=(256,))
-        encoder=OHEncoder(hidden_size1, use_BN, use_LN, use_WN, encoder_activation, hidden_activation, layer_normalization, force_normalization, enc_kernel_reg, enc_activity_reg)
+        encoder=OHEncoder(hidden_size1, use_BN, use_LN, use_WN, encoder_activation, hidden_activation, layer_normalization, force_normalization, pseudo_normalization, enc_kernel_reg, enc_activity_reg, additional_layer)
     else:
         inputs=tf.keras.Input(shape=(8,))
-        encoder=Encoder(hidden_size1, use_BN, use_LN, use_WN, encoder_activation, hidden_activation, layer_normalization, force_normalization, enc_kernel_reg, enc_activity_reg)
+        encoder=Encoder(hidden_size1, use_BN, use_LN, use_WN, encoder_activation, hidden_activation, layer_normalization, force_normalization, pseudo_normalization, enc_kernel_reg, enc_activity_reg, additional_layer)
     if dec_type=='onehot':
-        decoder=OHDecoder2(hidden_size2,use_BN,use_LN,use_WN,hidden_activation)
+        decoder=OHDecoder(hidden_size2,use_BN,use_LN,use_WN,hidden_activation)
     else:
         decoder=Decoder(hidden_size2,use_BN,use_LN,use_WN,hidden_activation)
     if noise_param is None:
