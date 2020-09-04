@@ -217,6 +217,18 @@ class cTanh(tf.keras.layers.Layer):
         config = super(cTanh, self).get_config()
         return config   
     
+class normLoss(tf.keras.layers.Layer):
+    def __init__(self,**kwargs):
+        super(normLoss,self).__init__(**kwargs)
+    def call(self,input,training=None):
+        mean_loss=tf.math.reduce_mean(tf.identity(input))**2
+        values_loss=tf.math.reduce_mean((tf.math.abs(tf.identity(input))-1)**2)
+        self.add_loss(0.5*mean_loss+0.5*values_loss)
+        return tf.identity(input)
+    def get_config(self):
+        config = super(normLoss, self).get_config()
+        return config 
+    
 def OHDecoder_SEQ(hidden_size,noise_layer,noise_param):
     model=tf.keras.Sequential()
     model.add(noise_layer(noise_param))
@@ -228,44 +240,62 @@ def OHDecoder_SEQ(hidden_size,noise_layer,noise_param):
               metrics=[ber_metric_oh,'acc'])
     return model
 
-def OHEncoder(hidden_size, use_BN=False, use_LN=False, use_WN=False, encoder_activation='tanh', hidden_activation='relu', layer_normalization=False, force_normalization=False, pseudo_normalization=False, enc_kernel_reg=None, enc_activity_reg=None, additional_layer=None):
+def OHEncoder(hidden_sizes, use_BN=False, use_LN=False, use_WN=False, encoder_activation='tanh', hidden_activation='relu', enc_kernel_reg=None, enc_activity_reg=None, additional_layers=[]):
     inputs=tf.keras.Input(shape=(256,))
     if use_WN:
-        enc=WeightNormalization(Dense(hidden_size,activation=hidden_activation))(inputs)
+        for i in range(len(hidden_sizes)):
+            if i==0:
+                enc=WeightNormalization(Dense(hidden_sizes[i],activation=hidden_activation))(inputs)
+            else:
+                enc=WeightNormalization(Dense(hidden_sizes[i],activation=hidden_activation))(enc)
+            if use_BN:
+                enc=BatchNormalization()(enc)
+            if use_LN:
+                enc=LayerNormalization()(enc)
     else:
-        enc=Dense(hidden_size,activation=hidden_activation)(inputs)
-    if use_BN:
-        enc=BatchNormalization()(enc)
-    elif use_LN:
-        enc=LayerNormalization()(enc)
+        for i in range(len(hidden_sizes)):
+            if i==0:
+                enc=Dense(hidden_sizes[i],activation=hidden_activation)(inputs)
+            else:
+                enc=Dense(hidden_sizes[i],activation=hidden_activation)(enc)
+            if use_BN:
+                enc=BatchNormalization()(enc)
+            if use_LN:
+                enc=LayerNormalization()(enc)
     
     enc=Dense(16, activation=encoder_activation, kernel_regularizer=enc_kernel_reg, activity_regularizer=enc_activity_reg)(enc)
-    if additional_layer is not None:
-        enc=additional_layer()(enc)
-    if layer_normalization:
-        enc=normLayer()(enc)
-    if force_normalization:
-        enc=forceNorm()(enc)
-    if pseudo_normalization:
-        enc=pseudoNorm()(enc)
+    for add_layer in additional_layers:
+        enc=add_layer()(enc)      
     model=tf.keras.Model(inputs,enc)
     return model
 
-def OHDecoder(hidden_size,use_BN=False,use_LN=False,use_WN=False,hidden_activation='relu'):
+def OHDecoder(hidden_sizes,use_BN=False,use_LN=False,use_WN=False,hidden_activation='relu'):
     inputs=tf.keras.Input(shape=(16,))
-    if use_WN:
-        dec=WeightNormalization(Dense(hidden_size,activation=hidden_activation))(inputs)
+    if use_WN:       
+        for i in range(len(hidden_sizes)):
+            if i==0:
+                dec=WeightNormalization(Dense(hidden_sizes[i],activation=hidden_activation))(inputs)
+            else:
+                dec=WeightNormalization(Dense(hidden_sizes[i],activation=hidden_activation))(dec)
+            if use_BN:
+                dec=BatchNormalization()(dec)
+            if use_LN:
+                dec=LayerNormalization()(dec)
     else:
-        dec=Dense(hidden_size,activation=hidden_activation)(inputs)
-    if use_BN:
-        dec=BatchNormalization()(dec)
-    elif use_LN:
-        dec=LayerNormalization()(dec)
+        for i in range(len(hidden_sizes)):
+            if i==0:
+                dec=Dense(hidden_sizes[i],activation=hidden_activation)(inputs)
+            else:
+                dec=Dense(hidden_sizes[i],activation=hidden_activation)(dec)
+            if use_BN:
+                dec=BatchNormalization()(dec)
+            if use_LN:
+                dec=LayerNormalization()(dec)
     dec_output=Dense(256,activation='softmax')(dec)
     model=tf.keras.Model(inputs,dec_output)
     return model
 
-def Encoder(hidden_sizes, use_BN=False, use_LN=False, use_WN=False, encoder_activation='tanh', hidden_activation='relu', layer_normalization=False, force_normalization=False, pseudo_normalization=False, enc_kernel_reg=None, enc_activity_reg=None, additional_layer=None):
+def Encoder(hidden_sizes, use_BN=False, use_LN=False, use_WN=False, encoder_activation='tanh', hidden_activation='relu', enc_kernel_reg=None, enc_activity_reg=None, additional_layers=[]):
     inputs=tf.keras.Input(shape=(8,))
     if use_WN:
         for i in range(len(hidden_sizes)):
@@ -289,14 +319,8 @@ def Encoder(hidden_sizes, use_BN=False, use_LN=False, use_WN=False, encoder_acti
                 enc=LayerNormalization()(enc)
     
     enc=Dense(16, activation=encoder_activation, kernel_regularizer=enc_kernel_reg, activity_regularizer=enc_activity_reg)(enc)
-    if additional_layer is not None:
-        enc=additional_layer()(enc)
-    if layer_normalization:
-        enc=normLayer()(enc)
-    if force_normalization:
-        enc=forceNorm()(enc)
-    if pseudo_normalization:
-        enc=pseudoNorm()(enc)
+    for add_layer in additional_layers:
+        enc=add_layer()(enc)
     model=tf.keras.Model(inputs,enc)
     return model
 
@@ -326,13 +350,13 @@ def Decoder(hidden_sizes,use_BN=False,use_LN=False,use_WN=False,hidden_activatio
     model=tf.keras.Model(inputs,dec)
     return model
 
-def Autoencoder(enc_type, dec_type, hidden_size1, hidden_size2, noise_layer, noise_param=None, use_BN=True, use_LN=False, use_WN=False, lr=0.001, encoder_activation='sigmoid', hidden_activation='relu', optim=Adam, lookahead=False, gradient_centralization=False, layer_normalization=False, force_normalization=False, pseudo_normalization=False, compile_autoencoder=True, compile_encoder=False, compile_decoder=False, enc_kernel_reg=None, enc_activity_reg=None, additional_layer=None):   
+def Autoencoder(enc_type, dec_type, hidden_size1, hidden_size2, noise_layer, noise_param=None, use_BN=True, use_LN=False, use_WN=False, lr=0.001, encoder_activation='sigmoid', hidden_activation='relu', optim=Adam, lookahead=False, gradient_centralization=False, compile_autoencoder=True, compile_encoder=False, compile_decoder=False, enc_kernel_reg=None, enc_activity_reg=None, additional_layers=[]):   
     if enc_type=='onehot':
         inputs=tf.keras.Input(shape=(256,))
-        encoder=OHEncoder(hidden_size1, use_BN, use_LN, use_WN, encoder_activation, hidden_activation, layer_normalization, force_normalization, pseudo_normalization, enc_kernel_reg, enc_activity_reg, additional_layer)
+        encoder=OHEncoder(hidden_size1, use_BN, use_LN, use_WN, encoder_activation, hidden_activation, enc_kernel_reg, enc_activity_reg, additional_layers)
     else:
         inputs=tf.keras.Input(shape=(8,))
-        encoder=Encoder(hidden_size1, use_BN, use_LN, use_WN, encoder_activation, hidden_activation, layer_normalization, force_normalization, pseudo_normalization, enc_kernel_reg, enc_activity_reg, additional_layer)
+        encoder=Encoder(hidden_size1, use_BN, use_LN, use_WN, encoder_activation, hidden_activation, enc_kernel_reg, enc_activity_reg, additional_layers)
     if dec_type=='onehot':
         decoder=OHDecoder(hidden_size2,use_BN,use_LN,use_WN,hidden_activation)
     else:
