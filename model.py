@@ -223,7 +223,7 @@ class normLoss(tf.keras.layers.Layer):
     def call(self,input,training=None):
         mean_loss=tf.math.reduce_mean(tf.identity(input))**2
         values_loss=tf.math.reduce_mean((tf.math.abs(tf.identity(input))-1)**2)
-        self.add_loss(0.5*mean_loss+0.5*values_loss)
+        self.add_loss(0.1*mean_loss+0.1*values_loss)
         return tf.identity(input)
     def get_config(self):
         config = super(normLoss, self).get_config()
